@@ -2,12 +2,23 @@ export declare namespace BotManager {
     export class Message {
         public room: string;
         public content: string;
+        public isGroupChat: boolean;
         public author: {
             avatar: {
                 getBase64: function();
             }
         }
         public reply(content: string);
+    }
+
+    export class JavaPackage {
+        public static readonly java = {
+            lang: {
+                String(string: string) : {
+                    hashCode: function(): number;
+                }
+            }
+        }
     }
 
     export class Database {
@@ -24,4 +35,6 @@ export declare namespace BotManager {
         public send(room: String, msg: String, packageName: String = null);
         public addListener(eventName: String, listene: Fuction);
     }
+
+    export function getCurrentBot(): Bot;
 }
