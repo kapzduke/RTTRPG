@@ -1,0 +1,28 @@
+{
+  "name": "bot",
+  "version": "1.0.0",
+  "main": "./src/index.ts",
+  "scripts": {},
+  "dependencies": {
+    "typescript": "^4.5.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sharlottes/nodejsbot.git"
+  },
+  "keywords": [],
+  "author": "Sharlotte",
+  "contributors": [
+    "AmateurPotion"
+  ],
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Sharlottes/nodejsbot/issues"
+  },
+  "homepage": "https://github.com/Sharlottes/nodejsbot#readme",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^17.0.10",
+    "ts-node": "^10.4.0"
+  }
+}
