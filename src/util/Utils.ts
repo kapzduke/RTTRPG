@@ -1,3 +1,5 @@
+import fs from "fs";
+
 namespace Utils {
   export class Mathf {
     public static range(from: number, to: number) {
@@ -28,6 +30,25 @@ namespace Utils {
       else string.replace("{0}", args);
       return string;
     }
+
+    public static hashCode(string: string){
+      var hash = 0;
+      for (var i = 0; i < string.length; i++) {
+          var character = string.charCodeAt(i);
+          hash = ((hash<<5)-hash)+character;
+          hash = hash & hash; // Convert to 32bit integer
+      }
+      return hash;
+    }
+  }
+
+  export class Database {
+      public static writeObject(fileName: string, obj: any) {
+        fs.writeFileSync(fileName, obj);
+      };
+      public static readObject<T>(fileName: string): T {
+        return JSON.parse(fs.readFileSync(fileName).toString()) as T;
+      };
   }
 }
 export default Utils;

@@ -1,4 +1,5 @@
-import { UserSecure, Contents } from "RTTRPG/modules";
+import { UserSecure } from "RTTRPG/modules";
+import { Contents } from "RTTRPG/game";
 
 namespace Entity {
   export class UnitEntity {

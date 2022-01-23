@@ -1,14 +1,17 @@
-import { Contents, Bundle } from "RTTRPG/modules";
-import { BotManager } from "RTTRPG/@type/";
+import { Message } from '@remote-kakao/core';
 
-type Message = BotManager.Message;
+import { Bundle } from 'RTTRPG/assets';
+import { Contents } from "RTTRPG/game";
+import { Utils } from "RTTRPG/util";
+
 type ItemStack = Contents.ItemStack;
 
+const Strings = Utils.Strings;
 const ItemStack = Contents.ItemStack;
-const Database = BotManager.Database;
+const Database = Utils.Database;
 
 function login(users: UserSecure.User[], target: UserSecure.User, msg: Message) {
-  const hash = BotManager.JavaPackage.java.lang.String(msg.author.avatar.getBase64()).hashCode();
+  const hash = Strings.hashCode(msg.sender.getProfileImage());
   const others = users.filter((u) => u !== target && u.hash == hash);
   if (others.length) {
     users = users.map((u) => {
@@ -16,11 +19,11 @@ function login(users: UserSecure.User[], target: UserSecure.User, msg: Message) 
       u.hash = 0;
       return u;
     });
-    msg.reply(Bundle.find(target.lang, "auto_logout"));
+    msg.replyText(Bundle.find(target.lang, "auto_logout"));
   }
   target.hash = hash;
   Database.writeObject("user_data", users);
-  msg.reply(Bundle.find(target.lang, "login_success"));
+  msg.replyText(Bundle.find(target.lang, "login_success"));
 }
 
 
@@ -102,49 +105,49 @@ namespace UserSecure {
   
   export function create(msg: Message) {
     const users: UserSecure.User[] = Database.readObject("user_data");
-    const hash = BotManager.JavaPackage.java.lang.String(msg.author.avatar.getBase64()).hashCode();
+    const hash = Strings.hashCode(msg.sender.getProfileImage());
     const [id, pw] = msg.content.slice(4).split(/\s/);
     const user = users.find((u) => u.id == id);
-    if (!id || !pw) msg.reply(Bundle.find("ko", "create_help"));
+    if (!id || !pw) msg.replyText(Bundle.find("ko", "create_help"));
     else if (user)
-      msg.reply(Bundle.find(user.lang, "account_exist").format(id));
+      msg.replyText(Bundle.find(user.lang, "account_exist").format(id));
     else {
       const target = new UserSecure.User(id, pw, hash);
       users.push(target);
       login(users, target, msg);
-      msg.reply(Bundle.find(target.lang, "create_success"));
+      msg.replyText(Bundle.find(target.lang, "create_success"));
     }
   };
 
   export function remove(msg: Message) {
     const users: User[] = Database.readObject("user_data");
-    const hash = BotManager.JavaPackage.java.lang.String(msg.author.avatar.getBase64()).hashCode();
+    const hash = Strings.hashCode(msg.sender.getProfileImage());
     const [id, pw] = msg.content.slice(4).split(/\s/);
     const user = users.find((u) => u.id == id);
-    if (!id || !pw) msg.reply(Bundle.find("ko", "remove_help"));
-    else if (!user) msg.reply(Bundle.find("ko", "account_notFound"));
+    if (!id || !pw) msg.replyText(Bundle.find("ko", "remove_help"));
+    else if (!user) msg.replyText(Bundle.find("ko", "account_notFound"));
     else if (user.password !== pw)
-      msg.reply(Bundle.find(user.lang, "account_incorrect"));
+      msg.replyText(Bundle.find(user.lang, "account_incorrect"));
     else if (user.hash !== hash)
-      msg.reply(Bundle.find(user.lang, "account_notLogin"));
+      msg.replyText(Bundle.find(user.lang, "account_notLogin"));
     else {
       users.splice(users.indexOf(user), 1);
       Database.writeObject("user_data", users);
-      msg.reply(Bundle.find(user.lang, "remove_success"));
+      msg.replyText(Bundle.find(user.lang, "remove_success"));
     }
   };
 
   export function signin(msg: Message) {
     const users: User[] = Database.readObject("user_data");
-    const hash = BotManager.JavaPackage.java.lang.String(msg.author.avatar.getBase64()).hashCode();
+    const hash = Strings.hashCode(msg.sender.getProfileImage());
     const [id, pw] = msg.content.slice(4).split(/\s/);
     const user = users.find((u) => u.id == id);
-    if (!id || !pw) msg.reply(Bundle.find("ko", "login_help"));
-    else if (!user) msg.reply(Bundle.find("ko", "account_notFound"));
+    if (!id || !pw) msg.replyText(Bundle.find("ko", "login_help"));
+    else if (!user) msg.replyText(Bundle.find("ko", "account_notFound"));
     else if (user.password !== pw)
-      msg.reply(Bundle.find(user.lang, "account_incorrect"));
+      msg.replyText(Bundle.find(user.lang, "account_incorrect"));
     else if (user.hash)
-      msg.reply(
+      msg.replyText(
         user.hash == hash
           ? Bundle.find(user.lang, "account_have")
           : Bundle.find(user.lang, "account_has")
@@ -154,12 +157,12 @@ namespace UserSecure {
 
   export function signout(msg: Message) {
     const users: User[] = Database.readObject("user_data");
-    const hash = BotManager.JavaPackage.java.lang.String(msg.author.avatar.getBase64()).hashCode();
+    const hash = Strings.hashCode(msg.sender.getProfileImage());
     const user = users.find((u) => u.hash == hash);
-    if (!user) msg.reply(Bundle.find("ko", "account_notLogin"));
+    if (!user) msg.replyText(Bundle.find("ko", "account_notLogin"));
     else {
       user.hash = 0;
-      msg.reply(Bundle.find(user.lang, "logout_success"));
+      msg.replyText(Bundle.find(user.lang, "logout_success"));
       Database.writeObject("user_data", users);
     }
   };
@@ -175,20 +178,20 @@ namespace UserSecure {
       !(type.toLowerCase() == "id" || type.toLowerCase() == "pw") ||
       !changeto
     )
-      msg.reply(Bundle.find("ko", "change_help"));
+      msg.replyText(Bundle.find("ko", "change_help"));
     else if (!user) {
-      msg.reply(Bundle.find("ko", "account_notFound"));
+      msg.replyText(Bundle.find("ko", "account_notFound"));
     } else if (type.toLowerCase() == "pw") {
       if (users.find((u) => u.id == changeto))
-        msg.reply(Bundle.find(user.lang, "account_exist").format(id));
+        msg.replyText(Bundle.find(user.lang, "account_exist").format(id));
       else {
-        msg.reply(
+        msg.replyText(
           Bundle.find(user.lang, "change_id").format(user.id, changeto)
         );
         user.id = changeto;
       }
     } else if (type.toLowerCase() == "id") {
-      msg.reply(
+      msg.replyText(
         Bundle.find(user.lang, "change_pw").format(user.id, changeto)
       );
       user.password = changeto;
@@ -199,17 +202,17 @@ namespace UserSecure {
 
   export function setLang(msg: Message) {
     const users: User[] = Database.readObject("user_data");
-    const hash = BotManager.JavaPackage.java.lang.String(msg.author.avatar.getBase64()).hashCode();
+    const hash = Strings.hashCode(msg.sender.getProfileImage());
     const [, langto] = msg.content.split(/\s/);
     const user = users.find((u) => u.hash == hash);
 
-    if (!user) return msg.reply(Bundle.find("ko", "account_notLogin"));
-    if (!langto || Bundle.langs.indexOf(langto)<0)
-      return msg.reply(
+    if (!user) return msg.replyText(Bundle.find("ko", "account_notLogin"));
+    if (!langto || !Bundle.langs.includes(langto))
+      return msg.replyText(
         Bundle.find(user.lang, "lang_help").format(Bundle.langs.join(" | "))
       );
 
-    msg.reply(Bundle.find(user.lang, "lang_success").format(user.lang, langto));
+    msg.replyText(Bundle.find(user.lang, "lang_success").format(user.lang, langto));
     user.lang = langto;
     Database.writeObject("user_data", users);
   };

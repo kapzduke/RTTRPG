@@ -1,6 +1,8 @@
 //TODO: 각 콘텐츠 파일로 나눠 모듈화. 줄이 너무 길어진다 이러다 다 죽어~
 
-import { UserSecure, Utils, Entity } from "RTTRPG/modules";
+import { UserSecure } from "RTTRPG/modules";
+import { Utils } from "RTTRPG/util"
+import { Entity } from "RTTRPG/game";
 
 type User = UserSecure.User;
 type UnitEntity = Entity.UnitEntity;
@@ -13,11 +15,7 @@ namespace Contents {
     public abstract consume(user: User, amount: number): string;
 
     public static is(target: any): target is Consumable {
-      if (Object.keys(target).indexOf("consume") >= 0) {
-        return true;
-      } else {
-        return false;
-      }
+      return Object.keys(target).includes("consume");
     }
   }
 
