@@ -22,7 +22,7 @@ function login(users: UserSecure.User[], target: UserSecure.User, msg: Message) 
     msg.replyText(Bundle.find(target.lang, "auto_logout"));
   }
   target.hash = hash;
-  Database.writeObject("user_data", users);
+  Database.writeObject("./Database/user_data", users);
   msg.replyText(Bundle.find(target.lang, "login_success"));
 }
 
@@ -104,7 +104,7 @@ namespace UserSecure {
 
   
   export function create(msg: Message) {
-    const users: UserSecure.User[] = Database.readObject("user_data");
+    let users: User[] = Database.readObject("./Database/user_data")||[];
     const hash = Strings.hashCode(msg.sender.getProfileImage());
     const [id, pw] = msg.content.slice(4).split(/\s/);
     const user = users.find((u) => u.id == id);
@@ -120,7 +120,7 @@ namespace UserSecure {
   };
 
   export function remove(msg: Message) {
-    const users: User[] = Database.readObject("user_data");
+    const users: User[] = Database.readObject("./Database/user_data")||[];
     const hash = Strings.hashCode(msg.sender.getProfileImage());
     const [id, pw] = msg.content.slice(4).split(/\s/);
     const user = users.find((u) => u.id == id);
@@ -132,13 +132,13 @@ namespace UserSecure {
       msg.replyText(Bundle.find(user.lang, "account_notLogin"));
     else {
       users.splice(users.indexOf(user), 1);
-      Database.writeObject("user_data", users);
+      Database.writeObject("./Database/user_data", users);
       msg.replyText(Bundle.find(user.lang, "remove_success"));
     }
   };
 
   export function signin(msg: Message) {
-    const users: User[] = Database.readObject("user_data");
+    let users: User[] = Database.readObject("./Database/user_data")||[];
     const hash = Strings.hashCode(msg.sender.getProfileImage());
     const [id, pw] = msg.content.slice(4).split(/\s/);
     const user = users.find((u) => u.id == id);
@@ -156,7 +156,7 @@ namespace UserSecure {
   };
 
   export function signout(msg: Message) {
-    const users: User[] = Database.readObject("user_data");
+    const users: User[] = Database.readObject("./Database/user_data")||[];
     const hash = Strings.hashCode(msg.sender.getProfileImage());
     const user = users.find((u) => u.hash == hash);
     if (!user) msg.replyText(Bundle.find("ko", "account_notLogin"));
@@ -168,7 +168,7 @@ namespace UserSecure {
   };
 
   export function change(msg: Message) {
-    const users: User[] = Database.readObject("user_data");
+    const users: User[] = Database.readObject("./Database/user_data")||[];
     const [, type, id, pw, changeto] = msg.content.split(/\s/);
     const user = users.find((u) => u.id == id);
     if (
@@ -197,11 +197,11 @@ namespace UserSecure {
       user.password = changeto;
     }
 
-    Database.writeObject("user_data", users);
+    Database.writeObject("./Database/user_data", users);
   };
 
   export function setLang(msg: Message) {
-    const users: User[] = Database.readObject("user_data");
+    const users: User[] = Database.readObject("./Database/user_data")||[];
     const hash = Strings.hashCode(msg.sender.getProfileImage());
     const [, langto] = msg.content.split(/\s/);
     const user = users.find((u) => u.hash == hash);
@@ -214,7 +214,7 @@ namespace UserSecure {
 
     msg.replyText(Bundle.find(user.lang, "lang_success").format(user.lang, langto));
     user.lang = langto;
-    Database.writeObject("user_data", users);
+    Database.writeObject("./Database/user_data", users);
   };
 }
 

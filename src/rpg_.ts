@@ -1,10 +1,11 @@
 
 import { Message, Server } from '@remote-kakao/core';
 
-import { UserSecure } from "./modules";
+import { UserSecure } from "RTTRPG/modules";
 import { Utils } from "RTTRPG/util";
 import { Entity } from "RTTRPG/game";
-import { Contents } from "./game";
+import { Contents } from "RTTRPG/game";
+import fs from "fs";
 
 type User = UserSecure.User;
 type Unit = Contents.Unit;
@@ -15,23 +16,18 @@ const UnitEntity = Entity.UnitEntity;
 const Strings = Utils.Strings;
 const Mathf = Utils.Mathf;
 const Database = Utils.Database;
-const prefix: string = "!";
+const prefix: string = "/";
 const perm: number[] = [-2072057940];
 const rooms: string[] = [
   "Sharlotted Bot Test",
   "[Main] 데브로봇스 커뮤니티 | Devlobots",
   "카카오톡 봇 커뮤니티",
   "밥풀이의 코딩&프로그래밍 소통방",
-];
-const config = {
-  email: 'email@kakao.com',
-  password: 'p@ssw0rd',
-  key: '00000000000000000000000000000000',
-  host: 'https://example.com',
-};
-const server = new Server({ useKakaoLink: true });
+  "K.S.A"
+]
+
 const latestMsgs: LatestMsg[] = [];
-let users: UserSecure.User[] = Database.readObject("user_data");
+let users: UserSecure.User[] = Database.readObject<Array<UserSecure.User>>("./Database/user_data")||[];
 
 type LatestMsg = {
   id: string,
@@ -53,6 +49,11 @@ class EventData {
     this.func = callback;
     this.selection = selections;
   }
+}
+
+function init() {
+  Contents.Items.init();
+  Contents.Units.init();
 }
 
 function makeSelection(user: User, entity: UnitEntity, selections: EventSelection[]) {
@@ -388,7 +389,7 @@ const inter = setInterval(() => {
 let selectionTimeout: number;
 
 function startEvent(event: EventData, msg: Message, user: User) {
-  event.func(msg, user, Contents.Units.getUnits()[0]); //dummy unit
+  event.func(msg, user, Contents.Units.find(0)); //dummy unit
   if (event.selection) {
     user.status.name = "selecting";
     user.status.callback = (m, u) => {
@@ -530,15 +531,16 @@ function switchWeapon(user: User, msg: Message, name: string) {
 }
 
 function read() {
-  return Database.readObject<Array<User>>("user_data");
+  return Database.readObject<Array<User>>("./Database/user_data");
 }
 
 function save() {
   checkusers();
-  Database.writeObject("user_data", users);
+  Database.writeObject("./Database/user_data", users);
 }
 
 function onMessage(msg: Message) {
+  //console.log(`${new Date().toLocaleString()} ---------- [${msg.room}] ${msg.sender.name}: ${msg.content}`);
   if (msg.isGroupChat && !rooms.includes(msg.room)) return;
   const hash = Strings.hashCode(msg.sender.getProfileImage());
   const user = users.find((u) => u.hash == hash);
@@ -658,7 +660,5 @@ function onMessage(msg: Message) {
   }
 }
 
-
-server.on('message', onMessage);
-server.start(3000, config);
-console.log("server started");
+init();
+export default onMessage;

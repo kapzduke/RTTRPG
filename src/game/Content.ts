@@ -280,7 +280,7 @@ namespace Contents {
   }
 
   export class Items {
-    private static readonly items: Item[];
+    private static readonly items: Item[] = [];
 
     public static init() {this.items.push(new Weapon(
         "짱돌",
@@ -331,7 +331,7 @@ namespace Contents {
 
   
   export class Units {
-    private static readonly units: Unit[];
+    private static readonly units: Unit[] = [];
 
     public static init() {
       this.units.push(new Unit(

@@ -1,7 +1,6 @@
-import { Utils } from "RTTRPG/util";
 import properties from "properties-reader";
 
-const find = Bundle.find
+import { Utils } from "RTTRPG/util";
 
 namespace Bundle {
   export const bundles: Map<string, any> = new Map();
@@ -10,10 +9,8 @@ namespace Bundle {
     return bundles.get(lang)[key];
   }
   
-}
+}// 귀찮
 
-Bundle.langs.forEach((lang) => Bundle.bundles.set(lang, Utils.Database.readObject(`bundle_${lang}.json`)));
-
+Bundle.langs.forEach((lang) => Bundle.bundles.set(lang, Utils.Database.readObject(`./assets/bundle_${lang}.json`)));
 
 export default Bundle;
-export { find };

@@ -23,9 +23,9 @@ namespace Utils {
 
   export class Strings {
     public static format(string: string, args: any[] | any) {
-      if(Array.isArray(args)) args.forEach((a) => {
-        while (string.includes("{" + a + "}"))
-          return string.replace("{" + a + "}", args[a]);
+      if(Array.isArray(args)) args.forEach((a,i) => {
+        while (string.includes("{" + i + "}"))
+          return string.replace("{" + i + "}", args[i]);
       });
       else string.replace("{0}", args);
       return string;
@@ -44,9 +44,14 @@ namespace Utils {
 
   export class Database {
       public static writeObject(fileName: string, obj: any) {
-        fs.writeFileSync(fileName, obj);
+        fs.writeFileSync(fileName, JSON.stringify(obj)
+        );
       };
       public static readObject<T>(fileName: string): T {
+        if(!fs.existsSync(fileName)) {
+          this.writeObject(fileName, "{}");
+          return new Object() as T;
+        }
         return JSON.parse(fs.readFileSync(fileName).toString()) as T;
       };
   }
