@@ -3,6 +3,7 @@
 import { UserSecure } from "RTTRPG/modules";
 import { Utils } from "RTTRPG/util"
 import { Entity } from "RTTRPG/game";
+import { Bundle } from "RTTRPG/assets";
 
 type User = UserSecure.User;
 type UnitEntity = Entity.UnitEntity;
@@ -11,6 +12,10 @@ let itemCount: number = 0;
 let unitCount: number = 0;
 
 namespace Contents {
+  export abstract class Heathy {
+    public abstract health: number;
+  }
+
   export abstract class Consumable {
     public abstract consume(user: User, amount: number): string;
 
@@ -37,14 +42,16 @@ namespace Contents {
 
   export class Content {
     public readonly name: string;
-    public readonly description: string;
-    public readonly details: string;
+    public readonly localName: (user: User)=>string;
+    public readonly description: (user: User)=>string;
+    public readonly details: (user: User)=>string;
     public readonly founders: number[]=[];
 
-    constructor(name: string, description: string, details: string) {
+    constructor(name: string, type: string = "other") {
       this.name = name;
-      this.description = description;
-      this.details = details;
+      this.localName = (user: User)=>Bundle.find(user.lang, `content.${type}.${name}.name`);
+      this.description = (user: User)=>Bundle.find(user.lang, `content.${type}.${name}.description`);
+      this.details = (user: User)=>Bundle.find(user.lang, `content.${type}.${name}.description`);
     }
   }
 
@@ -58,12 +65,10 @@ namespace Contents {
 
     constructor(
       name: string,
-      description: string,
-      details: string,
       rare: number,
       cost: number
     ) {
-      super(name, description, details);
+      super(name, "item");
       this.rare = rare;
       this.cost = cost;
       this.id = itemCount++;
@@ -95,7 +100,7 @@ namespace Contents {
 
   export class Buff {
     public readonly value: number;
-    public readonly name: string;
+    public readonly localName: (user: User)=>string;
     public readonly callback: Function;
 
     constructor(
@@ -104,7 +109,8 @@ namespace Contents {
       callback: (user: User, amount: number, buff: Buff) => string
     ) {
       this.value = value;
-      this.name = name;
+      
+      this.localName = (user: User)=>Bundle.find(user.lang, `buff.${name}.name`);
       this.callback = callback;
     }
 
@@ -118,13 +124,11 @@ namespace Contents {
 
     constructor(
       name: string,
-      description: string,
-      details: string,
       rare: number,
       cost: number,
       buffes: Buff[]
     ) {
-      super(name, description, details, rare, cost);
+      super(name, rare, cost);
       this.buffes = buffes;
     }
 
@@ -146,8 +150,6 @@ namespace Contents {
 
     constructor(
       name: string,
-      description: string,
-      details: string,
       rare: number,
       cost: number,
       damage: number,
@@ -156,7 +158,7 @@ namespace Contents {
       critical_chance: number,
       durability: number
     ) {
-      super(name, description, details, rare, cost);
+      super(name, rare, cost);
       this.damage = damage;
       this.cooldown = cooldown;
       this.critical_chance = critical_chance;
@@ -178,14 +180,13 @@ namespace Contents {
       this.durability -= amount;
     }
 
-    public attack(target: UnitEntity) {
+    public attack(attacker: User, target: Heathy) {
       let critical = Utils.Mathf.randbool(this.critical_chance);
 
       this.removeDurability();
-      return Strings.format(
-        "{0} 명중! 적에게 {1}(으)로 {2}만큼 데미지를 입혔습니다!\n{3}hp -> {4}hp",
+      return Strings.format(Bundle.find(attacker.lang, "hit"),
         [
-          critical ? "치명타" : "",
+          critical ? Bundle.find(attacker.lang, "critical") : "",
           this.name,
           (this.damage * (critical ? this.critical_ratio : 1)).toFixed(2),
           target.health.toFixed(2),
@@ -204,14 +205,12 @@ namespace Contents {
 
     constructor(
       name: string,
-      description: string,
-      details: string,
       health: number,
       level: number,
       rare: number,
       items: ItemStack[]
     ) {
-      super(name, description, details);
+      super(name, "unit");
 
       this.health = health;
       this.level = level;
@@ -230,6 +229,10 @@ namespace Contents {
       this.id = id;
       this.amount = amount;
       this.durability = durability;
+    }
+
+    public static from(stack: ItemStack) {
+      return new ItemStack(stack.id, stack.amount, stack.durability);
     }
 
     public static with(items: number[]) {
@@ -282,43 +285,20 @@ namespace Contents {
   export class Items {
     private static readonly items: Item[] = [];
 
-    public static init() {this.items.push(new Weapon(
-        "짱돌",
-        "길바닥에 돌아다니는 흔한 돌맹이다.",
-        "밟으면 아프니 지뢰의 기능을 하고, 던져도 아프니 탄환의 기능을 하며, 크기가 된다면 둔기의 기능으로도 되므로 이것이 바로 모든 무기의 시초로다.\n  =아리스토텔링",
-        0.25, 0.25, 1.15, 1.2, 0.2, 1.05, 1
-      ));
-      this.items.push(new Item("조각", "손까락 크기의 정말 작은 조각이다.", "", 0.5, 0.5));
-      this.items.push(new Potion(
-        "에너지 바",
-        "누군가가 흘린 한입 크기의 에너지 바.",
-        "", 
-        0.25, 0.25,
+    public static init() {
+      this.items.push(new Weapon("stone", 0.25, 0.25, 1.15, 1.2, 0.2, 1.05, 1));
+      this.items.push(new Item("fragment", 0.5, 0.5));
+      this.items.push(new Potion("energy_bar", 0.25, 0.25,
         [
-          new Buff(10, "기력", (user: User, amount: number, buff: Buff) => {
+          new Buff(10, "energy", (user: User, amount: number, buff: Buff) => {
             user.energy += amount * buff.value;
-            return "* 기력 +" + amount * buff.value;
+            return `* ${buff.localName(user)} +${amount * buff.value}`;
           })
         ] 
       ));
-      this.items.push(new Weapon(
-        "알루미늄 검",
-        "날카롭고 가벼우나 내구성이 매우 약합니다.",
-        "",
-        -1, 50, 1.5, 1, 1.15, 0.25, 10
-      ));
-      this.items.push(new Weapon(
-        "나무 검",
-        "내구성이 매우 강한 대신 전혀 날카롭지 않습니다.",
-        "",
-        -1, 30, 1.25, 1.5, 1.1, 0.15, 25
-      ));
-      this.items.push(new Weapon(
-        "주먹",
-        "인간 병기인 당신은 맨손 주먹을 무기로 선택했다!",
-        "",
-        -1, -1, 1, 1, 0.1, 1.1, -1
-      ));
+      this.items.push(new Weapon("aluminum_sword", -1, 50, 1.5, 1, 1.15, 0.25, 10));
+      this.items.push(new Weapon("wooden_sword", -1, 30, 1.25, 1.5, 1.1, 0.15, 25));
+      this.items.push(new Weapon("punch", -1, -1, 1, 1, 0.1, 1.1, -1));
     }
     public static getItems() {
       return this.items;
@@ -334,18 +314,8 @@ namespace Contents {
     private static readonly units: Unit[] = [];
 
     public static init() {
-      this.units.push(new Unit(
-        "장애물",
-        "누가 이런 거대한 장애물을 길바닥에 버려둔 걸까요?",
-        "한밤중, 가끔 이 장애물에서 반짝거림을 느낀다.",
-        5, 0.1, 1, []
-      ));
-      this.units.push(new Unit(
-        "고블린",
-        "저런, 이 잠자는 고블린은 곧 봉변을 맞이할 것입니다.",
-        "쿨...",
-        2, 0.3, 1, []
-      ));
+      this.units.push(new Unit("obstruction", 5, 0.1, 1, []));
+      this.units.push(new Unit("goblin", 2, 0.3, 1, []));
     }
 
     public static getUnits() {
