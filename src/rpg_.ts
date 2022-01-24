@@ -17,6 +17,8 @@ const Mathf = Utils.Mathf;
 const Database = Utils.Database;
 const prefix: string = "/";
 const perm: number[] = [-2072057940];
+const latestMsgs: LatestMsg[] = [];
+const Commands: Map<string, Map<string, Function>[]> = new Map();
 const rooms: string[] = [
   "Sharlotted Bot Test",
   "[Main] 데브로봇스 커뮤니티 | Devlobots",
@@ -26,7 +28,6 @@ const rooms: string[] = [
   "Mindustry 오픈채팅"
 ]
 
-const latestMsgs: LatestMsg[] = [];
 let users: UserSecure.User[] = read();
 
 type LatestMsg = {
@@ -41,7 +42,7 @@ class EventSelection {
 
   constructor(name: string, callback: (msg: Message, user: User, target: UnitEntity)=>void) {
     this.name = name;
-    this.localName = (user: User)=>Bundle.find(user.lang, `selection.${name}`);
+    this.localName = (user: User)=>Bundle.find(user.lang, `select.${name}`)||this.name;
     this.callback = callback;
   }
 };
@@ -58,9 +59,83 @@ class EventData {
   }
 }
 
+function statusCmd(msg: Message, user: User, lang: string) {
+  var targetid = msg.content.split(/\s/)[1];
+  var target = targetid?users.find((u) => u.id == targetid):user;
+  if(targetid&&!target) 
+    return msg.replyText(Bundle.format(lang, "account_account.notFound", targetid));
+  msg.replyText(getUserInfo(target as User));
+};
+
+function inventoryCmd(msg: Message, user: User, lang: string) {
+  var targetid = msg.content.split(/\s/)[1];
+  var target = users.find((u) => u.id == targetid);
+  if(!target) {
+    msg.replyText(Bundle.format(lang, "account_account.notFound", targetid));
+    target = user;
+  };
+  if (!target) return;
+  msg.replyText(getInventory(target));
+};
+
+function consumeCmd(msg: Message, user: User, lang: string) {
+  let name = msg.content.slice(4);
+  if (!name) return msg.replyText(prefix+Bundle.find(lang, "command.consume_help"));
+  let stack: Contents.ItemStack | undefined = user.inventory.items.find(i=>Contents.ItemStack.getItem(i).localName(user)==name);
+  if (!stack) return msg.replyText(Bundle.format(lang, "account.notFount", name));
+  stack.consume(user);
+};
+
+function contentInfoCmd(msg: Message, user: User, lang: string) {
+  msg.replyText(getContentInfo(user, msg) as string);
+};
+
+function weaponChangeCmd(msg: Message, user: User, lang: string) {
+  let weapon = msg.content.split(/\s/).slice(1).join(" ");
+  if (!weapon) msg.replyText(prefix+Bundle.find(lang, "command.swap_help"));
+  else switchWeapon(user, msg, weapon);
+};
+
+function walkingCmd(msg: Message, user: User, lang: string) {
+  if (user.stats.energy < 7) {
+    if (user.countover >= 3) {
+      msg.replyText(Bundle.find(lang, "calmdown"));
+    } else {
+      user.countover++;
+      msg.replyText(Bundle.format(lang, "notEnergy", user.stats.energy.toFixed(1), 7));
+    }
+  } else {
+    user.countover = 0;
+    search(msg, user);
+  }
+  save();
+};
+
 function init() {
   Contents.Items.init();
   Contents.Units.init();
+
+  ["ko", "en"].forEach(lang => {
+    const userCommands: Map<string, Function> = new Map();
+    const commands: Map<string, Function> = new Map();
+    
+    userCommands.set(Bundle.find(lang, "command.status"), statusCmd);
+    userCommands.set(Bundle.find(lang, "command.inventory"), inventoryCmd);
+    userCommands.set(Bundle.find(lang, "command.consume"), consumeCmd);
+    userCommands.set(Bundle.find(lang, "command.info"), contentInfoCmd);
+    userCommands.set(Bundle.find(lang, "command.swap"), weaponChangeCmd);
+    userCommands.set(Bundle.find(lang, "command.walking"), walkingCmd);
+
+    commands.set(Bundle.find(lang, "command.accounts"), (msg: Message)=> msg.replyText(users.map((u) => u.id).join(" | ")));
+    commands.set(Bundle.find(lang, "command.register"), (msg: Message)=> UserSecure.create(msg, users, lang));
+    commands.set(Bundle.find(lang, "command.remove"), (msg: Message)=> UserSecure.remove(msg, users, lang));
+    commands.set(Bundle.find(lang, "command.signin"), (msg: Message)=> UserSecure.signin(msg, users, lang));
+    commands.set(Bundle.find(lang, "command.signout"), (msg: Message)=> UserSecure.signout(msg, users, lang));
+    commands.set(Bundle.find(lang, "command.change"), (msg: Message)=> UserSecure.change(msg, users, lang));
+    commands.set(Bundle.find(lang, "command.language"), (msg: Message)=> UserSecure.setLang(msg, users, lang));
+
+    Commands.set(lang, [userCommands, commands]);
+  });
 }
 
 function makeSelection(user: User, entity: UnitEntity, selections: EventSelection[]) {
@@ -73,11 +148,11 @@ function makeSelection(user: User, entity: UnitEntity, selections: EventSelectio
       select.callback(m, u, entity);
     }
   };
-  return selections.map((e, i) => i + ". " + e.name).join("\n");
+  return selections.map((e, i) => i + ". " + e.localName(user)).join("\n");
 }
 
 function battle(msg: Message, user: User, unit: Unit) {
-  msg.replyText(Utils.Strings.format("전투 발생!\n{0} vs {1}", [user.id, unit.name]));
+  msg.replyText(Utils.Strings.format("전투 발생!\n{0} vs {1}", [user.id, unit.localName(user)]));
   msg.replyText(makeSelection(user, new UnitEntity(unit), battleSelection));
 }
 
@@ -103,16 +178,16 @@ function battlewin(msg: Message, user: User, unit: Unit) {
   save();
 }
 
-function giveItem(user: User, item: Item, amount: number=1) {
-  let exist = user.inventory.items.find((i) => i.equals(item));
-  if (exist) exist.add(amount);
+function giveItem(user: User, item: Item, amount: number=1): string {
+  let exist = user.inventory.items.find((i) => Contents.ItemStack.equals(i, item));
+  if (exist) exist.amount += amount;
   else user.inventory.items.push(new Contents.ItemStack(item.id, amount));
   save();
 
   
   if (!item.founders.includes(user.hash)) {
     item.founders.push(user.hash);
-    return Bundle.format(user.lang, "fistget", item.name);
+    return Bundle.format(user.lang, "firstget", item.localName(user));
   }
   return "";
 }
@@ -121,22 +196,22 @@ const exchangeSelection: EventSelection[] = [
   new EventSelection("buy", (msg, user, target) => {
     let repeat = (m: Message, u: UserSecure.User, t: UnitEntity) => {
       m.replyText(makeSelection(u, t, Contents.Units.find(t.id).items.map((entity) => {
-        let item = entity.getItem();
+        let item = Contents.ItemStack.getItem(entity);
         let money = item.cost * 35;
 
         return new EventSelection(
-          `${item.name}: ${money+Bundle.format(u.lang, "unit.money")} (${entity.getAmount+Bundle.format(u.lang, "unit.item")} ${Bundle.format(u.lang, "unit.item_left")})`,
-          (m: Message, u: UserSecure.User, t: UnitEntity) => {
+          `${item.localName(user)}: ${money+Bundle.format(u.lang, "unit.money")} (${entity.amount+Bundle.format(u.lang, "unit.item")} ${Bundle.format(u.lang, "unit.item_left")})`,
+          (m, u, t) => {
             let amount = Number((m.content.split(/\s/)[1] || "1").replace(/\D/g, "") || 1);
-            if (amount > entity.getAmount())
-              m.replyText(Bundle.format(u.lang, "shop.notEnough_item", item.name, amount, entity.getAmount()));
+            if (amount > entity.amount)
+              m.replyText(Bundle.format(u.lang, "shop.notEnough_item", item.localName(user), amount, entity.amount));
             else if (u.money < amount * money)
               m.replyText(Bundle.format(u.lang, "shop.notEnough_money", amount * money, u.money));
             else {
-              m.replyText(Bundle.format(u.lang, "shop.buyed", item.name, amount, u.money, (u.money -= money * amount)));
-              entity.setAmount(entity.getAmount()-amount);
+              m.replyText(Bundle.format(u.lang, "shop.buyed", item.localName(user), amount, u.money, (u.money -= money * amount)));
+              entity.amount = entity.amount-amount;
               m.replyText(giveItem(u, item, amount));
-              if (!entity.getAmount()) t.items.items.splice(t.items.items.indexOf(entity), 1);
+              if (!entity.amount) t.items.items.splice(t.items.items.indexOf(entity), 1);
               save();
             }
               
@@ -152,21 +227,21 @@ const exchangeSelection: EventSelection[] = [
   new EventSelection("sell", (msg, user, target) => {
     let repeat = (m: Message, u: UserSecure.User, t: UnitEntity) => {
       m.replyText(makeSelection(u, t, u.inventory.items.map((entity) => {
-        let item = entity.getItem();
+        let item = Contents.ItemStack.getItem(entity);
         let money = item.cost * 10;
 
         return new EventSelection(
-          `${item.name}: ${money+Bundle.format(u.lang, "unit.money")} (${money+Bundle.format(u.lang, "unit.item")} ${Bundle.format(u.lang, "unit.item_left")})`,
+          `${item.localName(u)}: ${money+Bundle.format(u.lang, "unit.money")} (${money+Bundle.format(u.lang, "unit.item")} ${Bundle.format(u.lang, "unit.item_left")})`,
           (m: Message, u: UserSecure.User, t: UnitEntity) => {
             let [, a] = m.content.split(/\s/);
             let amount = Number((a || "1").replace(/\D/g, "") || 1);
                 
-            if (amount > entity.getAmount())
-              m.replyText(Bundle.format(u.lang, "shop.notEnough_item", item.name, amount, entity.getAmount()));
+            if (amount > entity.amount)
+              m.replyText(Bundle.format(u.lang, "shop.notEnough_item", item.localName(u), amount, entity.amount));
             else {
-              m.replyText(Bundle.format(u.lang, "shop.selled", item.name, amount, u.money, (u.money += money * amount)));
-              entity.setAmount(entity.getAmount()-amount);
-              if (!entity.getAmount()) u.inventory.items.splice(u.inventory.items.indexOf(entity), 1);
+              m.replyText(Bundle.format(u.lang, "shop.selled", item.localName(u), amount, u.money, (u.money += money * amount)));
+              entity.amount = entity.amount-amount;
+              if (!entity.amount) u.inventory.items.splice(u.inventory.items.indexOf(entity), 1);
               save();
             }
 
@@ -179,115 +254,96 @@ const exchangeSelection: EventSelection[] = [
 
     repeat(msg, user, target);
   }),
-  new EventSelection("back", (msg, user, target) => msg.replyText("고블린은 좋은 거래 상대를 만났다며 홀가분하게 떠났다."))
+  new EventSelection("back", (msg, user) => msg.replyText(Bundle.find(user.lang, "shop.end")))
 ];
 
 const battleSelection = [
-  {
-    desc: "공격하기",
-    func: (msg: Message, user: User, target: UnitEntity) => {
-      if (user.cooldown > 0) {
-        msg.replyText(Strings.format("무기 쿨타임: {0}s", user.cooldown.toFixed(2)));
-        msg.replyText(makeSelection(user, target, battleSelection));
-        return;
-      }
+  new EventSelection("attack", (msg, user, target) => {
+    if (user.cooldown > 0) {
+      msg.replyText(Bundle.format(user.lang, "battle.cooldown", user.cooldown.toFixed(2)));
+      msg.replyText(makeSelection(user, target, battleSelection));
+      return;
+    }
 
-      let weapon: Contents.Weapon = user.inventory.weapon.getItem();
-      if (weapon == undefined) return;
-      weapon.attack(user, target);
+    let weapon: Contents.Weapon = Contents.ItemStack.getItem(user.inventory.weapon);
+    if (!weapon) return;
+    weapon.attack(user, target);
 
-      if (weapon.getDurability() <= 0) {
-          msg.replyText(Strings.format("무기 {0}(이)가 파괴되었습니다!", weapon.name));
-          user.inventory.weapon.setID(5);
-          save();
-        
-      }
+    if (weapon.getDurability() <= 0) {
+      msg.replyText(Bundle.format(user.lang, "battle.broken", weapon.localName(user)));
+      user.inventory.weapon.id = 5;
+      save();
+    }
 
-      if (target.health <= 0) {
-        msg.replyText((target.health < 0 ? "오버킬 " : "") + Strings.format("승리! 상대의 hp가 {0}입니다!", target.health.toFixed(2)));
-        battlewin(msg, user, Contents.Units.find(target.id));
-      } else msg.replyText(makeSelection(user, target, battleSelection));
-    },
-  },
+    if (target.health <= 0) {
+      msg.replyText((target.health < 0 ? Bundle.find(user.lang, "battle.overkill") : "") + Bundle.format(user.lang, "battle.win", target.health.toFixed(2)));
+      battlewin(msg, user, Contents.Units.find(target.id));
+    } else msg.replyText(makeSelection(user, target, battleSelection));
+  })
 ];
 
 const eventData = [
-  new EventData(10, msg=> msg.replyText("전투가 발생했지만 그들은 당신의 빛나는 머리를 보고 쓰러졌습니다!")),
+  new EventData(10, (msg, user)=> msg.replyText(Bundle.find(user?.lang, "battle.ignore"))),
   new EventData(35, (msg, user) => {
     if(!user) return;
     let money = 2 + Math.floor(Math.random() * 10);
     user.money += money;
-    msg.replyText("길바닥에 떨어진 동전을 주웠다!\n돈 +" + money);
+    msg.replyText(Bundle.format(user.lang, "event.money", money));
   }),
   new EventData(5, (msg, user) => {
-      msg.replyText("지나가던 고블린을 조우했다!");
-      selectionTimeout = setTimeout((msg: Message, user: User) => {
+      msg.replyText(Bundle.find(user?.lang, "event.goblin"));
+      selectionTimeout.set(user as User, setTimeout((msg: Message, user: User) => {
           if (user.status.name == "selecting") {
             let money = Math.floor(Mathf.range(2, 15));
             user.money -= money;
             user.status.clearSelection();
 
-            msg.replyText(Strings.format("10초동안 가만히 있는 당신을 본 고블린은 슬그머니 소매치기를 했다.\n돈: -{0}", money));
+            msg.replyText(Bundle.format(user.lang, "event.goblin_timeout", money));
           }
         }, 10 * 1000, [msg, user]
-      );
+      ));
     },
     [
-      {
-        desc: "도망치기",
-        func: (m, u) => {
-          if (Mathf.randbool()) {
-            let money = Math.floor(Mathf.range(2, 10));
-            u.money -= money;
-            m.replyText(Strings.format("성공적으로 도망쳤...앗, 내 돈주머니!\n돈: -{0}", money));
-          } else {
-            m.replyText("흙먼지로 시선을 돌리고 도망치는데 성공했다!");
-          }
-        },
-      },
-      {
-        desc: "대화하기",
-        func: (m, u) => {
-          let money = Math.floor(Mathf.range(2, 5));
+      new EventSelection("run", (m, u) => {
+        if (Mathf.randbool()) {
+          let money = Math.floor(Mathf.range(2, 10));
           u.money -= money;
-          m.replyText(Strings.format("...도저히 무슨 언어인지 몰라 주저하던 순간 고블린이 돈주머니를 낚아챘다.\n돈: -{0}", money));
-        },
-      },
-      {
-        desc: "거래하기",
-        func: (msg, unit) => {
-          let goblin = new UnitEntity(Contents.Units.find(1));
-          for (let i = 0; i < 20; i++) {
-            let item = getOne(Contents.Items.getItems().filter((i) => i.dropableOnShop()), "rare");
-            let exist = goblin.items.items.find((entity) => entity.getItem() == item);
-            if (exist) exist.setAmount(exist.getAmount()+1);
-            else goblin.items.items.push(new Contents.ItemStack(item));
-          }
+          m.replyText(Bundle.format(u.lang, "event.goblin_run_failed", money));
+        } else {
+          m.replyText(Bundle.find(u.lang, "event.goblin_run_failed"));
+        }
+      }),
+      new EventSelection("talking", (m, u) => {
+        let money = Math.floor(Mathf.range(2, 5));
+        u.money -= money;
+        m.replyText(Bundle.format(u.lang, "event.goblin_talking", money));
+      }),
+      new EventSelection("exchange", (m, u) => {
+        let goblin = new UnitEntity(Contents.Units.find(1));
+        for (let i = 0; i < 20; i++) {
+          let item = getOne(Contents.Items.getItems().filter((i) => i.dropableOnShop()), "rare");
+          let exist = goblin.items.items.find((entity) => Contents.ItemStack.getItem(entity) == item);
+          if (exist) exist.amount++;
+          else goblin.items.items.push(new Contents.ItemStack(item));
+        }
 
-          let item = getOne(Contents.Items.getItems().filter((i) => !i.dropableOnShop()), "rare");
-          goblin.items.items.push(new Contents.ItemStack(item));
-          msg.replyText("고블린과 거래를 시도한다.");
-          msg.replyText(makeSelection(unit, goblin, exchangeSelection));
-        },
-      },
+        let item = getOne(Contents.Items.getItems().filter((i) => !i.dropableOnShop()), "rare");
+        goblin.items.items.push(new Contents.ItemStack(item));
+        m.replyText(Bundle.find(u.lang, "event.goblin_exchange"));
+        m.replyText(makeSelection(u, goblin, exchangeSelection));
+      })
     ]
   ),
   new EventData(50, (msg, user) => {
     if(!user) return;
     let item = getOne(Contents.Items.getItems().filter((i) => i.dropableOnWalking()), "rare");
-    msg.replyText(Strings.format("길바닥에 떨어진 {0}을(를) 주웠다!\n{1}: +1", [item.name, item.name]));
+    msg.replyText(Bundle.format(user.lang, "event.item", item.localName(user)));
     msg.replyText(giveItem(user, item));
   }),
-  new EventData(10, (msg, user) => msg.replyText("불쾌할 정도로 거대한 장애물을 발견했다!"),
+  new EventData(10, (msg, user) => msg.replyText(Bundle.find(user?.lang, "event.obstruction")),
     [
-      {
-        desc: "공격하기",
-        func: (m, u) => battle(m, u, Contents.Units.find(0))
-      },
-      {
-        desc: "지나가기",
-        func: (m, u) => m.replyText("이런 겁쟁이 같으니라고.")
-      },
+      new EventSelection("battle", (m, u) => battle(m, u, Contents.Units.find(0))),
+      new EventSelection("run", (m, u) => m.replyText(Bundle.find(u.lang, "event.obstruction_run")))
     ]
   ),
 ];
@@ -308,7 +364,7 @@ function getOne(arr: any[], ratio: string) {
 }
 
 function levelup(user: User) {
-  let str = Strings.format("{0} 레벨 업! {1}lv -> {2}lv\n모든 체력 및 기력이 회복됩니다.\n체력: {3}hp -> {4}hp\n기력: {5} -> {6}", [
+  let str = Bundle.format(user.lang, "levelup", 
       user.id,
       user.level,
       user.level + 1,
@@ -316,7 +372,7 @@ function levelup(user: User) {
       (user.stats.health_max += Math.pow(user.level, 0.6) * 5),
       user.stats.energy_max,
       (user.stats.energy_max += Math.pow(user.level, 0.4) * 2.5)
-  ]);
+  );
   let latestMsg = latestMsgs.find(u=>u.id==user.id);
   rooms.forEach((room) => latestMsg?.msg.replyText(room, str));
   user.stats.health = user.stats.health_max;
@@ -334,18 +390,13 @@ function checkusers() {
 }
 
 const inter = setInterval(() => {
-  try {
-    users.forEach((u) => {
-      if (u.cooldown > 0) u.cooldown -= 1 / 100;
+  users.forEach((u) => {
+    if (u.cooldown > 0) u.cooldown -= 1 / 100;
 
-      u.stats.energy = Math.min(u.stats.energy_max, u.stats.energy + u.stats.energy_regen / 100);
-    });
-  } catch (e) {
-    console.log(e);
-    clearInterval(inter);
-  }
+    u.stats.energy = Math.min(u.stats.energy_max, u.stats.energy + u.stats.energy_regen / 100);
+  });
 }, 10);
-let selectionTimeout: number;
+const selectionTimeout: Map<User, number> = new Map();
 
 function startEvent(event: EventData, msg: Message, user: User) {
   event.func(msg, user, Contents.Units.find(0)); //dummy unit
@@ -356,17 +407,17 @@ function startEvent(event: EventData, msg: Message, user: User) {
       let select = event.selection[parseInt(m.content.replace(/\D/g, ""))];
       if (select) {
         user.status.clearSelection();
-        select.func(msg, user, new UnitEntity(Contents.Units.getUnits()[0]));
-        if (selectionTimeout) clearTimeout(selectionTimeout);
+        select.callback(msg, user, new UnitEntity(Contents.Units.getUnits()[0]));
+        if (selectionTimeout.get(user)) clearTimeout(selectionTimeout.get(user));
       }
     };
-    msg.replyText(event.selection.map((e, i) => i + ". " + e.desc).join("\n"));
+    msg.replyText(event.selection.map((e, i) => i + ". " + e.localName(user)).join("\n"));
   }
 }
 
 function search(msg: Message, user: User) {
   let event = getOne(eventData, "ratio");
-  if (!event) return msg.replyText("매우 평화로운 초원에서 피톤치트를 느낀다.");
+  if (!event) return msg.replyText(Bundle.find(user.lang, "event.phytoncide"));
   startEvent(event, msg, user);
   user.stats.energy -= 7;
 }
@@ -374,16 +425,16 @@ function search(msg: Message, user: User) {
 function info(user: User, content: Item|Unit) {
   return (
     (content.founders.includes(user.hash)
-      ? content.name 
-      : content.name.replace(/./g, "?")) +
+      ? content.localName(user) 
+      : content.localName(user).replace(/./g, "?")) +
     "\n" +
     (content.founders.includes(user.hash)
-      ? content.description 
-      : content.name.replace(/./g, "?")) +
+      ? content.description(user)
+      : content.description(user).replace(/./g, "?")) +
     (content.details 
       ? "\n------------\n  " + (content.founders.includes(user.hash)
-        ? content.details 
-        : content.name.replace(/./g, "?")) + "\n------------"
+        ? content.details(user)
+        : content.details(user).replace(/./g, "?")) + "\n------------"
       : "")
   );
 }
@@ -396,17 +447,17 @@ function getContentInfo(user: User, msg: Message) {
   let str = "";
   let name = msg.content.split(/\s/).slice(2).join(" ");
   if (type == "유닛") {
-    if (name && !Contents.Units.getUnits().some((u) => u.name == name))
+    if (name && !Contents.Units.getUnits().some((u) => u.localName(user) == name))
       return msg.replyText(Strings.format("유닛 {0}(을)를 찾을 수 없습니다.", name));
     str = Strings.format("유닛\n===============\n\n{0}\n\n", [name
-        ? info(user, Contents.Units.getUnits().find((u) => u.name == name) as Unit)
+        ? info(user, Contents.Units.getUnits().find((u) => u.localName(user) == name) as Unit)
         : Contents.Units.getUnits().map((c) => info(user, c)).join("\n\n")
     ]);
   } else if (type == "아이템") {
-    if (name && !Contents.Items.getItems().some((u) => u.name == name))
+    if (name && !Contents.Items.getItems().some((u) => u.localName(user) == name))
       return msg.replyText(Strings.format("아이템{0}(을)를 찾을 수 없습니다.", name));
     str = Strings.format("아이템\n===============\n\n{0}\n\n", name 
-      ? info(user,Contents.Items.getItems().find((u) => u.name == name) as Item)
+      ? info(user,Contents.Items.getItems().find((u) => u.localName(user) == name) as Item)
       : Contents.Items.getItems().map((c) => info(user, c)).join("\n\n")
     );
   }
@@ -414,33 +465,21 @@ function getContentInfo(user: User, msg: Message) {
 }
 
 function getInventory(user: User) {
-  return Strings.format("인벤토리\n-----------\n{0}{1}", [
-    user.inventory.items.length > 3 ? "\u200b".repeat(500) : "",
-    user.inventory.items
-      .map((i) => {
-        let item = i.getItem();
-        return Strings.format("• {0} {1}\n   {2}{3}", [
-          item.name,
-          i.getAmount() > 0 ? Strings.format("({0}개)", i.getAmount()) : "",
-          item.description,
-          i.durability && item instanceof Contents.Durable
-            ? Strings.format(" 내구도: {0}/{1}", [i.durability, item.durability])
-            : ""
-        ]);
-      })
-      .join("\n\n")
-    ]);
+  return Bundle.find(user.lang, "inventory")+"\n-----------\n"+user.inventory.items.map((i) => {
+    let item = Contents.ItemStack.getItem(i);
+    return `• ${item.localName(user)} ${i.amount > 0 ? `(${i.amount+Bundle.find(user.lang, "unit.item")})` : ""}\n   ${item.description(user)}${i.durability && item instanceof Contents.Durable ? `(${Bundle.find(user.lang, "durability")}: ${i.durability}/${item.durability})` : ""}`;
+  }).join("\n\n");
 }
 
 function getUserInfo(user: User) {
-  let weapon: Contents.Weapon = user.inventory.weapon.getItem();
+  let weapon: Contents.Weapon = Contents.ItemStack.getItem(user.inventory.weapon);
   if (!weapon) {
-    user.inventory.weapon.setID(5);
+    user.inventory.weapon.id = 5;
     weapon = Contents.Items.find(5);
     save();
   }
   
-  return Strings.format("{0} {1}lv, {2}exp/{3}exp\n-----------\n돈: {4}원\n기력: {5}/{6} ({7}기력/s)\n체력: {8}/{9} ({10}체력/s)\n\n장비\n-------------\n무기: {11} {12}\n  *쿨다운: {13}s\n  *데미지: {14} ({15}%확률로 데미지의 {16}%만큼 치명타)", [
+  return Bundle.format(user.lang, "status_info", 
     user.id,
     user.level,
     user.exp,
@@ -452,37 +491,37 @@ function getUserInfo(user: User) {
     user.stats.health.toFixed(1),
     user.stats.health_max,
     user.stats.health_regen,
-    weapon.name, 
+    weapon.localName(user), 
       user.inventory.weapon.durability && weapon.durability
-      ? Strings.format(" 내구도: {0}/{1}", [user.inventory.weapon.durability, weapon.durability])
+      ? `(${Bundle.find(user.lang, "durability")}: ${user.inventory.weapon.durability}/${weapon.durability})`
       : "",
 
     weapon.cooldown,
     weapon.damage,
     (weapon.critical_chance * 100).toFixed(2),
     (weapon.critical_ratio * 100).toFixed(2)
-  ]);
+  );
 }
 
 function switchWeapon(user: User, msg: Message, name: string) {
-  let item = Contents.Items.getItems().find((i) => i.name == name);
-  if (!item) msg.replyText(Strings.format("무기 {0}(을)를 찾을 수 없습니다.", name));
+  let item = Contents.Items.getItems().find((i) => i.localName(user) == name);
+  if (!item) msg.replyText(Bundle.format(user.lang, "switch_notFound", name));
   else {
-    let entity = user.inventory.items.find((entity) => entity.getItem() == item);
-    if (!entity) msg.replyText(Strings.format("무기 {0}(이)가 가방에 없습니다.", name));
+    let entity = user.inventory.items.find((entity) => Contents.ItemStack.getItem(entity) == item);
+    if (!entity) msg.replyText(Bundle.format(user.lang, "switch_notHave", name));
     else {
-      entity.setAmount(entity.getAmount()-1);
-      if (!entity.getAmount()) user.inventory.items.splice(user.inventory.items.indexOf(entity), 1);
+      entity.amount--;
+      if (!entity.amount) user.inventory.items.splice(user.inventory.items.indexOf(entity), 1);
 
-      let exist: Item = user.inventory.weapon.getItem();
+      let exist: Item = Contents.ItemStack.getItem(user.inventory.weapon);
       if (exist) {
-        msg.replyText(Strings.format("무기 {0}(을)를 장착하고 무기 {1}(을)를 가방에 넣었습니다.", [name, exist.name]));
+        msg.replyText(Bundle.format(user.lang, "switch_change", name, exist.localName(user)));
         msg.replyText(giveItem(user, item));
       } else 
-        msg.replyText(Strings.format("무기 {0}(을)를 장착했습니다.", name));
+        msg.replyText(Bundle.format(user.lang, "switch_equip", name));
       
       
-        user.inventory.weapon.setID(item.id);
+        user.inventory.weapon.id = item.id;
 
       save();
     }
@@ -511,14 +550,6 @@ function onMessage(msg: Message) {
   
   console.log(`${new Date().toLocaleString()} ---------- [${msg.room}] ${msg.sender.name}: ${msg.content}`);
 
-  if(user) {
-    let exist = latestMsgs.find(u=>u.id==user.id);
-    if(exist) exist.msg = msg;
-    else latestMsgs.push({
-      id: user.id,
-      msg: msg
-    });
-  }
 
   if (perm.includes(hash) && msg.content.startsWith("node")) {
     try {
@@ -530,92 +561,25 @@ function onMessage(msg: Message) {
       msg.replyText(e + "");
     }
   }
+  
+  if (user) {
+    let exist = latestMsgs.find(u=>u.id==user.id);
+    if(exist) exist.msg = msg;
+    else latestMsgs.push({
+      id: user.id,
+      msg: msg
+    });
+  }
 
-  if (msg.content.startsWith(prefix)) {
-    switch (msg.content.slice(1).split(/\s/)[0]) {
-      case "상태창":
-        if (!user) return msg.replyText("비로그인 상태입니다.");
-        var targetid = msg.content.split(/\s/)[1];
-        var target = targetid?users.find((u) => u.id == targetid):user;
-        if(targetid&&!target) 
-          return msg.replyText(Strings.format("계정 {0}(을)를 찾을 수 없습니다.", targetid));
-        msg.replyText(getUserInfo(target as User));
-        break;
-      case "인벤토리":
-        if (!user) return msg.replyText("비로그인 상태입니다.");
-        var targetid = msg.content.split(/\s/)[1];
-        var target = users.find((u) => u.id == targetid);
-           if(!target) {
-              msg.replyText(Strings.format("계정 {0}(을)를 찾을 수 없습니다.", targetid));
-              target = user;
-           };
-        if (!target) return;
-        msg.replyText(getInventory(target));
-        break;
-      case "소모":
-        if (!user) return msg.replyText("비로그인 상태입니다.");
-        let name = msg.content.slice(4);
-        if (!name) return msg.replyText("!소모 <아이템명>");
-        let stack: Contents.ItemStack | undefined = user.inventory.items.find(i=>i.getItem().name==name);
-        if (!stack) return msg.replyText(name + "을(를) 찾을 수 없습니다.");
-        stack.consume(user);
-        break;
-      case "도감":
-        if (!user) return msg.replyText("비로그인 상태입니다.");
-        msg.replyText(getContentInfo(user, msg) as string);
-        break;
-      case "전환":
-        if (!user) return msg.replyText("비로그인 상태입니다.");
-        let weapon = msg.content.split(/\s/).slice(1).join(" ");
-        if (!weapon) msg.replyText("!전환 <아이템>");
-        else switchWeapon(user, msg, weapon);
-        break;
+  Commands.forEach((commands, lang)=> {
+    const userFunc = commands[0].get(msg.content.slice(1).split(/\s/)[0]);
+    if(userFunc) {
+      if(user) userFunc.call(null, msg, user, lang);
+      else msg.replyText(Bundle.find(lang, "account.account_notLogin"));
     }
-  }
-
-  if (user && user.status.callback && user.status.name == "selecting") {
-    return user.status.callback(msg, user);
-  }
-
-  if (!msg.content.startsWith(prefix)) return;
-  switch (msg.content.slice(1).split(/\s/)[0]) {
-    case "돌아다니기":
-      if (!user) return msg.replyText("비로그인 상태입니다.");
-      else if (user.stats.energy < 7) {
-        if (user.countover >= 3) {
-          msg.replyText("게임을 좀 여유롭게 플레이하세요.");
-        } else {
-          user.countover++;
-          msg.replyText("기력이 부족합니다. " + user.stats.energy.toFixed(1) + "/7");
-        }
-      } else {
-        user.countover = 0;
-        search(msg, user);
-      }
-      save();
-      break;
-    case "계정":
-      msg.replyText(users.map((u) => u.id).join(" | "));
-      break;
-    case "가입":
-      UserSecure.create(msg, users);
-      break;
-    case "탈퇴":
-      UserSecure.remove(msg, users);
-      break;
-    case "로그인":
-      UserSecure.signin(msg, users);
-      break;
-    case "로그아웃":
-      UserSecure.signout(msg, users);
-      break;
-    case "변경":
-      UserSecure.change(msg, users);
-      break;
-    case "언어":
-      UserSecure.setLang(msg, users);
-      break;
-  }
+  });
+  if (user&&user.status.callback && user.status.name == "selecting") user.status.callback(msg, user);
+  else Commands.forEach((commands, lang)=> commands[1].get(msg.content.slice(1).split(/\s/)[0])?.call(null, msg, user, lang))
 }
 
 init();

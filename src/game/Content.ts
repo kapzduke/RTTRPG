@@ -184,9 +184,9 @@ namespace Contents {
       let critical = Utils.Mathf.randbool(this.critical_chance);
 
       this.removeDurability();
-      return Strings.format(Bundle.find(attacker.lang, "hit"),
+      return Strings.format(Bundle.find(attacker.lang, "battle.hit"),
         [
-          critical ? Bundle.find(attacker.lang, "critical") : "",
+          critical ? Bundle.find(attacker.lang, "battle.critical") : "",
           this.name,
           (this.damage * (critical ? this.critical_ratio : 1)).toFixed(2),
           target.health.toFixed(2),
@@ -221,8 +221,8 @@ namespace Contents {
   }
 
   export class ItemStack {
-    private id: number;
-    private amount: number;
+    id: number;
+    amount: number;
     durability: number | undefined;
 
     constructor(id: number, amount: number=1, durability?: number) {
@@ -242,43 +242,22 @@ namespace Contents {
       }
       return stacks;
     }
-
-    public add(amount: number = 1) {
-      amount += amount;
-    }
-    
-    public remove(amount: number = 1) {
-      amount -= amount;
-    }
-
-    public getAmount() {
-      return this.amount;
-    }
-
-    public setAmount(amount: number) {
-      return this.amount = amount;
-    }
-
-    public setID(id: number) {
-      return this.id = id;
-    }
-
-    public equals(item: Item, amount?: number) {
-      return this.id == item.id && (!amount || this.amount == amount);
+    public static equals(stack: ItemStack, item: Item, amount?: number) {
+      return stack.id == item.id && (!amount || stack.amount == amount);
     }
 
     public consume(user: User, amount: number = 1) {
       let item = Contents.Items.find(this.id);
       if (item != undefined) {
         if (item instanceof Consumable) {
-          this.remove(amount);
+          this.amount--;
           return item.consume(user, amount);
         } else throw "the item: " + item.name + " is not consumable!";
       }
     }
 
-    public getItem<T extends Item>(): T {
-      return Contents.Items.find(this.id) as T;
+    public static getItem<T extends Item>(stack: ItemStack): T {
+      return Contents.Items.find(stack.id) as T;
     }
   }
 
@@ -296,9 +275,9 @@ namespace Contents {
           })
         ] 
       ));
-      this.items.push(new Weapon("aluminum_sword", -1, 50, 1.5, 1, 1.15, 0.25, 10));
-      this.items.push(new Weapon("wooden_sword", -1, 30, 1.25, 1.5, 1.1, 0.15, 25));
-      this.items.push(new Weapon("punch", -1, -1, 1, 1, 0.1, 1.1, -1));
+      this.items.push(new Weapon("aluminum_sword", -1, 50, 1.5, 1, 1.15, 0.25, 10).dropWalking(false));
+      this.items.push(new Weapon("wooden_sword", -1, 30, 1.25, 1.5, 1.1, 0.15, 25).dropWalking(false));
+      this.items.push(new Weapon("punch", -1, -1, 1, 1, 0.1, 1.1, -1).dropBattle(false).dropShop(false).dropWalking(false));
     }
     public static getItems() {
       return this.items;
