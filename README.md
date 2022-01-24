@@ -6,7 +6,7 @@ Real-Time Text RPG based on TypeScript(es6)
 ### Android
 1. install MessengerBot on playstore
 2. add bot with [this script](https://github.com/remote-kakao/core-client/releases/download/1.0.0-alpha.0/core-client.js).
-3. edit script like for UDP connection.
+3. edit json in bot script for UDP connection.
 ~~~js
 var config = {
     address: 'server address',
