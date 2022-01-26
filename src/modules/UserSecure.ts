@@ -1,17 +1,16 @@
-import { Message } from '@remote-kakao/core';
-
 import { Bundle } from 'RTTRPG/assets';
 import { Contents } from "RTTRPG/game";
 import { Utils } from "RTTRPG/util";
+import RTTRPG from 'RTTRPG/index';
 
+type Message = RTTRPG.Message;
 type ItemStack = Contents.ItemStack;
 
-const Strings = Utils.Strings;
 const ItemStack = Contents.ItemStack;
 const Database = Utils.Database;
 
-function login(users: UserSecure.User[], target: UserSecure.User, msg: Message) {
-  const hash = Strings.hashCode(msg.sender.getProfileImage());
+function login(users: UserSecure.User[], target: UserSecure.User, msg: Message, lang: string) {
+  const hash = msg.sender.hash;
   const others = users.filter((u) => u !== target && u.hash == hash);
   if (others.length) {
     users = users.map((u) => {
@@ -19,11 +18,11 @@ function login(users: UserSecure.User[], target: UserSecure.User, msg: Message) 
       u.hash = 0;
       return u;
     });
-    msg.replyText(Bundle.find(target.lang, "auto_logout"));
+    msg.replyText(Bundle.find(lang, "account.auto_logout"));
   }
   target.hash = hash;
   Database.writeObject("./Database/user_data", users);
-  msg.replyText(Bundle.find(target.lang, "login_success"));
+  msg.replyText(Bundle.find(lang, "account.login_success"));
 }
 
 
@@ -90,6 +89,7 @@ namespace UserSecure {
     public inventory: Inventory = defaultInven; 
     public lang: string = "ko";
     public countover: number = 0;
+    public foundItems: number[] = [];
 
     constructor(id: string, password: string, hash: number, lang: string = "ko") {
       this.id = id;
@@ -105,61 +105,62 @@ namespace UserSecure {
 
   
   export function create(msg: Message, users: User[], lang: string = "ko") {
-    const hash = Strings.hashCode(msg.sender.getProfileImage());
-    const [id, pw] = msg.content.slice(4).split(/\s/);
+    const hash = msg.sender.hash;
+    let [id, pw] = msg.content.split(/\s/).slice(1);
     const user = users.find((u) => u.id == id);
-    if (!id || !pw) msg.replyText(Bundle.find(lang, "create_help"));
+    if(id?.includes("@")) id = id.replace("@", "");
+    if (!id || !pw) msg.replyText(Bundle.find(lang, "account.create_help"));
     else if (user)
-      msg.replyText(Bundle.format(user.lang, "account_exist", id));
+      msg.replyText(Bundle.format(lang, "account.account_exist", id));
     else {
       const target = new UserSecure.User(id, pw, hash);
       users.push(target);
-      login(users, target, msg);
-      msg.replyText(Bundle.find(target.lang, "create_success"));
+      login(users, target, msg, lang);
+      msg.replyText(Bundle.find(lang, "account.create_success"));
     }
   };
 
   export function remove(msg: Message, users: User[], lang: string = "ko") {
-    const hash = Strings.hashCode(msg.sender.getProfileImage());
-    const [id, pw] = msg.content.slice(4).split(/\s/);
+    const hash = msg.sender.hash;
+    const [id, pw] = msg.content.split(/\s/).slice(1);
     const user = users.find((u) => u.id == id);
-    if (!id || !pw) msg.replyText(Bundle.find(lang, "remove_help"));
-    else if (!user) msg.replyText(Bundle.find(lang, "account_notFound"));
+    if (!id || !pw) msg.replyText(Bundle.find(lang, "account.remove_help"));
+    else if (!user) msg.replyText(Bundle.find(lang, "account.account_notFound"));
     else if (user.password !== pw)
-      msg.replyText(Bundle.find(user.lang, "account_incorrect"));
+      msg.replyText(Bundle.find(lang, "account.account_incorrect"));
     else if (user.hash !== hash)
-      msg.replyText(Bundle.find(user.lang, "account_notLogin"));
+      msg.replyText(Bundle.find(lang, "account.account_notLogin"));
     else {
       users.splice(users.indexOf(user), 1);
       Database.writeObject("./Database/user_data", users);
-      msg.replyText(Bundle.find(user.lang, "remove_success"));
+      msg.replyText(Bundle.find(lang, "account.remove_success"));
     }
   };
 
   export function signin(msg: Message, users: User[], lang: string = "ko") {
-    const hash = Strings.hashCode(msg.sender.getProfileImage());
-    const [id, pw] = msg.content.slice(5).split(/\s/);
+    const hash = msg.sender.hash;
+    const [id, pw] = msg.content.split(/\s/).slice(1);
     const user = users.find((u) => u.id == id);
-    if (!id || !pw) msg.replyText(Bundle.find(lang, "login_help"));
-    else if (!user) msg.replyText(Bundle.find(lang, "account_notFound"));
+    if (!id || !pw) msg.replyText(Bundle.find(lang, "account.login_help"));
+    else if (!user) msg.replyText(Bundle.find(lang, "account.account_notFound"));
     else if (user.password !== pw)
-      msg.replyText(Bundle.find(user.lang, "account_incorrect"));
+      msg.replyText(Bundle.find(lang, "account.account_incorrect"));
     else if (user.hash)
       msg.replyText(
         user.hash == hash
-          ? Bundle.find(user.lang, "account_have")
-          : Bundle.find(user.lang, "account_has")
+          ? Bundle.find(lang, "account.account_have")
+          : Bundle.find(lang, "account.account_has")
       );
-    else login(users, user, msg);
+    else login(users, user, msg, lang);
   };
 
   export function signout(msg: Message, users: User[], lang: string = "ko") {
-    const hash = Strings.hashCode(msg.sender.getProfileImage());
+    const hash = msg.sender.hash;
     const user = users.find((u) => u.hash == hash);
-    if (!user) msg.replyText(Bundle.find(lang, "account_notLogin"));
+    if (!user) msg.replyText(Bundle.find(lang, "account.account_notLogin"));
     else {
       user.hash = 0;
-      msg.replyText(Bundle.find(user.lang, "logout_success"));
+      msg.replyText(Bundle.find(lang, "account.logout_success"));
       Database.writeObject("user_data", users);
     }
   };
@@ -174,21 +175,21 @@ namespace UserSecure {
       !(type.toLowerCase() == "id" || type.toLowerCase() == "pw") ||
       !changeto
     )
-      msg.replyText(Bundle.find(lang, "change_help"));
+      msg.replyText(Bundle.find(lang, "account.change_help"));
     else if (!user) {
-      msg.replyText(Bundle.find(lang, "account_notFound"));
+      msg.replyText(Bundle.find(lang, "account.account_notFound"));
     } else if (type.toLowerCase() == "pw") {
       if (users.find((u) => u.id == changeto))
-        msg.replyText(Bundle.format(user.lang, "account_exist", id));
+        msg.replyText(Bundle.format(lang, "account.account_exist", id));
       else {
         msg.replyText(
-          Bundle.format(user.lang, "change_id", user.id, changeto)
+          Bundle.format(lang, "account.change_id", user.id, changeto)
         );
         user.id = changeto;
       }
     } else if (type.toLowerCase() == "id") {
       msg.replyText(
-        Bundle.format(user.lang, "change_pw", user.id, changeto)
+        Bundle.format(lang, "account.change_pw", user.id, changeto)
       );
       user.password = changeto;
     }
@@ -197,17 +198,17 @@ namespace UserSecure {
   };
 
   export function setLang(msg: Message, users: User[], lang: string = "ko") {
-    const hash = Strings.hashCode(msg.sender.getProfileImage());
-    const [, langto] = msg.content.split(/\s/);
+    const hash = msg.sender.hash;
+    const langto = msg.content.split(/\s/)[1];
     const user = users.find((u) => u.hash == hash);
 
-    if (!user) return msg.replyText(Bundle.find(lang, "account_notLogin"));
+    if (!user) return msg.replyText(Bundle.find(lang, "account.account_notLogin"));
     if (!langto || !Bundle.langs.includes(langto))
       return msg.replyText(
-        Bundle.format(user.lang, "lang_help", Bundle.langs.join(" | "))
+        Bundle.format(lang, "account.lang_help", Bundle.langs.join(" | "))
       );
 
-    msg.replyText(Bundle.format(user.lang, "lang_success", user.lang, langto));
+    msg.replyText(Bundle.format(lang, "account.lang_success", lang, langto));
     user.lang = langto;
     Database.writeObject("./Database/user_data", users);
   };

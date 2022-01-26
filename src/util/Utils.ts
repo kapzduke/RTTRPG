@@ -31,7 +31,7 @@ namespace Utils {
       return string;
     }
 
-    public static hashCode(string: string){
+    public static hashCode(string: string): number{
       var hash = 0;
       for (var i = 0; i < string.length; i++) {
           var character = string.charCodeAt(i);

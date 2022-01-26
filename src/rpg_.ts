@@ -1,32 +1,25 @@
-
-import { Message } from '@remote-kakao/core';
-
 import { UserSecure } from "RTTRPG/modules";
 import { Utils } from "RTTRPG/util";
 import { Entity, Contents } from "RTTRPG/game";
 import { Bundle } from "RTTRPG/assets";
+import RTTRPG from 'RTTRPG/index';
 
+type Message = RTTRPG.Message;
 type User = UserSecure.User;
 type Unit = Contents.Unit;
 type Item = Contents.Item;
 type UnitEntity = Entity.UnitEntity;
+type ItemStack = Contents.ItemStack;
 
+const ItemStack = Contents.ItemStack;
 const UnitEntity = Entity.UnitEntity;
 const Strings = Utils.Strings;
 const Mathf = Utils.Mathf;
 const Database = Utils.Database;
 const prefix: string = "/";
-const perm: number[] = [-2072057940];
 const latestMsgs: LatestMsg[] = [];
 const Commands: Map<string, Map<string, Function>[]> = new Map();
-const rooms: string[] = [
-  "Sharlotted Bot Test",
-  "[Main] 데브로봇스 커뮤니티 | Devlobots",
-  "카카오톡 봇 커뮤니티",
-  "밥풀이의 코딩&프로그래밍 소통방",
-  "K.S.A",
-  "Mindustry 오픈채팅"
-]
+const rooms: string[] = ["Sharlotted Bot Test"]
 
 let users: UserSecure.User[] = read();
 
@@ -40,9 +33,9 @@ class EventSelection {
   localName: (user: User)=>string;
   callback: (msg: Message, user: User, target: UnitEntity)=>void;
 
-  constructor(name: string, callback: (msg: Message, user: User, target: UnitEntity)=>void) {
-    this.name = name;
-    this.localName = (user: User)=>Bundle.find(user.lang, `select.${name}`)||this.name;
+  constructor(name: string | ((user: User)=>string), callback: (msg: Message, user: User, target: UnitEntity)=>void) {
+    this.name = name instanceof Function ? "" : name;
+    this.localName = (user: User)=> (name instanceof Function ? name(user) : Bundle.find(user.lang, `select.${name}`));
     this.callback = callback;
   }
 };
@@ -63,27 +56,26 @@ function statusCmd(msg: Message, user: User, lang: string) {
   var targetid = msg.content.split(/\s/)[1];
   var target = targetid?users.find((u) => u.id == targetid):user;
   if(targetid&&!target) 
-    return msg.replyText(Bundle.format(lang, "account_account.notFound", targetid));
+    return msg.replyText(Bundle.format(lang, "account.account_notFound", targetid));
   msg.replyText(getUserInfo(target as User));
 };
 
 function inventoryCmd(msg: Message, user: User, lang: string) {
   var targetid = msg.content.split(/\s/)[1];
-  var target = users.find((u) => u.id == targetid);
-  if(!target) {
-    msg.replyText(Bundle.format(lang, "account_account.notFound", targetid));
-    target = user;
-  };
-  if (!target) return;
-  msg.replyText(getInventory(target));
+  var target = targetid?users.find((u) => u.id == targetid):user;
+  if(targetid&&!target) 
+    return msg.replyText(Bundle.format(lang, "account.account_notFound", targetid));
+  msg.replyText(getInventory(target as User));
 };
 
 function consumeCmd(msg: Message, user: User, lang: string) {
-  let name = msg.content.slice(4);
+  let name = msg.content.split(/\s/).slice(1).join(" ");
   if (!name) return msg.replyText(prefix+Bundle.find(lang, "command.consume_help"));
-  let stack: Contents.ItemStack | undefined = user.inventory.items.find(i=>Contents.ItemStack.getItem(i).localName(user)==name);
+  let stack: ItemStack | undefined = user.inventory.items.find(i=>ItemStack.getItem(i).localName(user)==name);
   if (!stack) return msg.replyText(Bundle.format(lang, "account.notFount", name));
-  stack.consume(user);
+  let result = ItemStack.consume(stack, user);
+  console.log(result);
+  if(result) msg.replyText(result);
 };
 
 function contentInfoCmd(msg: Message, user: User, lang: string) {
@@ -97,6 +89,7 @@ function weaponChangeCmd(msg: Message, user: User, lang: string) {
 };
 
 function walkingCmd(msg: Message, user: User, lang: string) {
+  if(user&&user.status.callback && user.status.name == "selecting") return;
   if (user.stats.energy < 7) {
     if (user.countover >= 3) {
       msg.replyText(Bundle.find(lang, "calmdown"));
@@ -112,6 +105,9 @@ function walkingCmd(msg: Message, user: User, lang: string) {
 };
 
 function init() {
+  users.forEach(user => {
+    if(!user.foundItems) user.foundItems = [];
+  });
   Contents.Items.init();
   Contents.Units.init();
 
@@ -152,55 +148,52 @@ function makeSelection(user: User, entity: UnitEntity, selections: EventSelectio
 }
 
 function battle(msg: Message, user: User, unit: Unit) {
-  msg.replyText(Utils.Strings.format("전투 발생!\n{0} vs {1}", [user.id, unit.localName(user)]));
+  msg.replyText(Bundle.format(user.lang, "battle.start", user.id, unit.localName(user)));
   msg.replyText(makeSelection(user, new UnitEntity(unit), battleSelection));
 }
 
 function battlewin(msg: Message, user: User, unit: Unit) {
   let items = [];
-  for (let i = 0; i < Math.floor(Mathf.range(unit.level, unit.level + 2)); i++) {
-    let item = getOne(
-      Contents.Items.getItems().filter((i) => i.dropableOnBattle()),
-      "rare"
-    );
+  for (let i = 0; i < Math.floor(Mathf.range(unit.level, unit.level + 2)+1); i++) {
+    let item = getOne(Contents.Items.getItems().filter((i) => i.dropableOnBattle()), "rare");
     if (item) {
       let obj = items.find((i) => i.item == item);
       if (obj) obj.amount++;
       else items.push({ item: item, amount: 1 });
     }
   }
-  msg.replyText(Bundle.format(user.lang, "battle_result", 
+  msg.replyText(Bundle.format(user.lang, "battle.result", 
     user.exp,
     (user.exp += unit.level * (1 + unit.rare) * 10),
-    items.map((i) => `${i.item.localName(user)} +${i.amount}${Bundle.find(user.lang, "unit.item")}`).join("\n")
+    items.map((i) => `${i.item.localName(user)} +${i.amount} ${Bundle.find(user.lang, "unit.item")}`).join("\n")
   ));
-  msg.replyText(items.map((i) => giveItem(user, i.item)).filter(e=>e).join("\n"));
+  let text = items.map((i) => giveItem(user, i.item)).filter(e=>e).join("\n");
+  if(text) msg.replyText(text);
   save();
 }
 
-function giveItem(user: User, item: Item, amount: number=1): string {
-  let exist = user.inventory.items.find((i) => Contents.ItemStack.equals(i, item));
+function giveItem(user: User, item: Item, amount: number=1): string | null {
+  let exist = user.inventory.items.find((i) => ItemStack.equals(i, item));
   if (exist) exist.amount += amount;
-  else user.inventory.items.push(new Contents.ItemStack(item.id, amount));
+  else user.inventory.items.push(new ItemStack(item.id, amount));
   save();
 
-  
-  if (!item.founders.includes(user.hash)) {
-    item.founders.push(user.hash);
+  if(!user.foundItems.includes(item.id)) {
+    user.foundItems.push(item.id);
     return Bundle.format(user.lang, "firstget", item.localName(user));
   }
-  return "";
+  return null;
 }
 
 const exchangeSelection: EventSelection[] = [
   new EventSelection("buy", (msg, user, target) => {
     let repeat = (m: Message, u: UserSecure.User, t: UnitEntity) => {
-      m.replyText(makeSelection(u, t, Contents.Units.find(t.id).items.map((entity) => {
-        let item = Contents.ItemStack.getItem(entity);
+      m.replyText(makeSelection(u, t, target.items.items.map((entity) => {
+        let item = ItemStack.getItem(entity);
         let money = item.cost * 35;
 
         return new EventSelection(
-          `${item.localName(user)}: ${money+Bundle.format(u.lang, "unit.money")} (${entity.amount+Bundle.format(u.lang, "unit.item")} ${Bundle.format(u.lang, "unit.item_left")})`,
+          u=>`${item.localName(user)}: ${money+Bundle.format(u.lang, "unit.money")} (${entity.amount+Bundle.format(u.lang, "unit.item")} ${Bundle.format(u.lang, "unit.item_left")})`,
           (m, u, t) => {
             let amount = Number((m.content.split(/\s/)[1] || "1").replace(/\D/g, "") || 1);
             if (amount > entity.amount)
@@ -210,7 +203,8 @@ const exchangeSelection: EventSelection[] = [
             else {
               m.replyText(Bundle.format(u.lang, "shop.buyed", item.localName(user), amount, u.money, (u.money -= money * amount)));
               entity.amount = entity.amount-amount;
-              m.replyText(giveItem(u, item, amount));
+              const given = giveItem(u, item, amount);
+              if(given) m.replyText(given);
               if (!entity.amount) t.items.items.splice(t.items.items.indexOf(entity), 1);
               save();
             }
@@ -227,11 +221,11 @@ const exchangeSelection: EventSelection[] = [
   new EventSelection("sell", (msg, user, target) => {
     let repeat = (m: Message, u: UserSecure.User, t: UnitEntity) => {
       m.replyText(makeSelection(u, t, u.inventory.items.map((entity) => {
-        let item = Contents.ItemStack.getItem(entity);
+        let item = ItemStack.getItem(entity);
         let money = item.cost * 10;
 
         return new EventSelection(
-          `${item.localName(u)}: ${money+Bundle.format(u.lang, "unit.money")} (${money+Bundle.format(u.lang, "unit.item")} ${Bundle.format(u.lang, "unit.item_left")})`,
+          u=>`${item.localName(u)}: ${money+Bundle.format(u.lang, "unit.money")} (${entity.amount+Bundle.format(u.lang, "unit.item")} ${Bundle.format(u.lang, "unit.item_left")})`,
           (m: Message, u: UserSecure.User, t: UnitEntity) => {
             let [, a] = m.content.split(/\s/);
             let amount = Number((a || "1").replace(/\D/g, "") || 1);
@@ -265,18 +259,19 @@ const battleSelection = [
       return;
     }
 
-    let weapon: Contents.Weapon = Contents.ItemStack.getItem(user.inventory.weapon);
+    let weapon: Contents.Weapon = ItemStack.getItem(user.inventory.weapon);
     if (!weapon) return;
-    weapon.attack(user, target);
-
-    if (weapon.getDurability() <= 0) {
-      msg.replyText(Bundle.format(user.lang, "battle.broken", weapon.localName(user)));
-      user.inventory.weapon.id = 5;
-      save();
+    msg.replyText(weapon.attack(user, target));
+    if (!user.inventory.weapon.durability || user.inventory.weapon.durability < 0) {
+      if(user.inventory.weapon.id !== 5) {
+        msg.replyText(Bundle.format(user.lang, "battle.broken", weapon.localName(user)));
+        user.inventory.weapon.id = 5;
+        save();
+      }
     }
 
     if (target.health <= 0) {
-      msg.replyText((target.health < 0 ? Bundle.find(user.lang, "battle.overkill") : "") + Bundle.format(user.lang, "battle.win", target.health.toFixed(2)));
+      msg.replyText((target.health < 0 ? Bundle.find(user.lang, "battle.overkill") + " " : "") + Bundle.format(user.lang, "battle.win", target.health.toFixed(2)));
       battlewin(msg, user, Contents.Units.find(target.id));
     } else msg.replyText(makeSelection(user, target, battleSelection));
   })
@@ -321,14 +316,14 @@ const eventData = [
       new EventSelection("exchange", (m, u) => {
         let goblin = new UnitEntity(Contents.Units.find(1));
         for (let i = 0; i < 20; i++) {
-          let item = getOne(Contents.Items.getItems().filter((i) => i.dropableOnShop()), "rare");
-          let exist = goblin.items.items.find((entity) => Contents.ItemStack.getItem(entity) == item);
+          let item = getOne(Contents.Items.getItems().filter((i) => i.dropableOnShop()&&i.id!==5), "rare");
+          let exist = goblin.items.items.find((entity) => ItemStack.getItem(entity) == item);
           if (exist) exist.amount++;
-          else goblin.items.items.push(new Contents.ItemStack(item));
+          else goblin.items.items.push(new ItemStack(item.id,1,item.durability));
         }
 
-        let item = getOne(Contents.Items.getItems().filter((i) => !i.dropableOnShop()), "rare");
-        goblin.items.items.push(new Contents.ItemStack(item));
+        let item = getOne(Contents.Items.getItems().filter((i) => !i.dropableOnShop()&&i.id!==5), "rare");
+        goblin.items.items.push(new ItemStack(item.id,1,item.durability));
         m.replyText(Bundle.find(u.lang, "event.goblin_exchange"));
         m.replyText(makeSelection(u, goblin, exchangeSelection));
       })
@@ -338,7 +333,8 @@ const eventData = [
     if(!user) return;
     let item = getOne(Contents.Items.getItems().filter((i) => i.dropableOnWalking()), "rare");
     msg.replyText(Bundle.format(user.lang, "event.item", item.localName(user)));
-    msg.replyText(giveItem(user, item));
+    const given = giveItem(user, item);
+    if(given) msg.replyText(given);
   }),
   new EventData(10, (msg, user) => msg.replyText(Bundle.find(user?.lang, "event.obstruction")),
     [
@@ -424,15 +420,15 @@ function search(msg: Message, user: User) {
 
 function info(user: User, content: Item|Unit) {
   return (
-    (content.founders.includes(user.hash)
+    (user.foundItems.includes(content.id)
       ? content.localName(user) 
       : content.localName(user).replace(/./g, "?")) +
     "\n" +
-    (content.founders.includes(user.hash)
+    (user.foundItems.includes(content.id)
       ? content.description(user)
       : content.description(user).replace(/./g, "?")) +
     (content.details 
-      ? "\n------------\n  " + (content.founders.includes(user.hash)
+      ? "\n------------\n  " + (user.foundItems.includes(content.id)
         ? content.details(user)
         : content.details(user).replace(/./g, "?")) + "\n------------"
       : "")
@@ -466,13 +462,13 @@ function getContentInfo(user: User, msg: Message) {
 
 function getInventory(user: User) {
   return Bundle.find(user.lang, "inventory")+"\n-----------\n"+user.inventory.items.map((i) => {
-    let item = Contents.ItemStack.getItem(i);
-    return `• ${item.localName(user)} ${i.amount > 0 ? `(${i.amount+Bundle.find(user.lang, "unit.item")})` : ""}\n   ${item.description(user)}${i.durability && item instanceof Contents.Durable ? `(${Bundle.find(user.lang, "durability")}: ${i.durability}/${item.durability})` : ""}`;
+    let item = ItemStack.getItem(i);
+    return `• ${item.localName(user)} ${i.amount > 0 ? `(${i.amount+" "+Bundle.find(user.lang, "unit.item")})` : ""}\n   ${item.description(user)}${i.durability && item instanceof Contents.Durable ? `(${Bundle.find(user.lang, "durability")}: ${i.durability}/${item.durability})` : ""}`;
   }).join("\n\n");
 }
 
 function getUserInfo(user: User) {
-  let weapon: Contents.Weapon = Contents.ItemStack.getItem(user.inventory.weapon);
+  let weapon: Contents.Weapon = ItemStack.getItem(user.inventory.weapon);
   if (!weapon) {
     user.inventory.weapon.id = 5;
     weapon = Contents.Items.find(5);
@@ -507,16 +503,17 @@ function switchWeapon(user: User, msg: Message, name: string) {
   let item = Contents.Items.getItems().find((i) => i.localName(user) == name);
   if (!item) msg.replyText(Bundle.format(user.lang, "switch_notFound", name));
   else {
-    let entity = user.inventory.items.find((entity) => Contents.ItemStack.getItem(entity) == item);
+    let entity = user.inventory.items.find((entity) => ItemStack.getItem(entity) == item);
     if (!entity) msg.replyText(Bundle.format(user.lang, "switch_notHave", name));
     else {
       entity.amount--;
       if (!entity.amount) user.inventory.items.splice(user.inventory.items.indexOf(entity), 1);
 
-      let exist: Item = Contents.ItemStack.getItem(user.inventory.weapon);
+      let exist: Item = ItemStack.getItem(user.inventory.weapon);
       if (exist) {
         msg.replyText(Bundle.format(user.lang, "switch_change", name, exist.localName(user)));
-        msg.replyText(giveItem(user, item));
+        const given = giveItem(user, item);
+        if(given) msg.replyText(given);
       } else 
         msg.replyText(Bundle.format(user.lang, "switch_equip", name));
       
@@ -531,8 +528,8 @@ function switchWeapon(user: User, msg: Message, name: string) {
 function read() {
   let users: User[] = Database.readObject<Array<User>>("./Database/user_data");
   return users.map(u=>{
-    u.inventory.weapon = Contents.ItemStack.from(u.inventory.weapon);
-    u.inventory.items.forEach(stack => stack = Contents.ItemStack.from(stack));
+    u.inventory.weapon = ItemStack.from(u.inventory.weapon);
+    u.inventory.items.forEach(stack => stack = ItemStack.from(stack));
     u.status = new UserSecure.Status();
     return u;
   });
@@ -545,23 +542,11 @@ function save() {
 
 function onMessage(msg: Message) {
   if (msg.isGroupChat && !rooms.includes(msg.room)) return;
-  const hash = Strings.hashCode(msg.sender.getProfileImage());
+  const hash = msg.sender.hash;
   const user = users.find((u) => u.hash == hash);
   
   console.log(`${new Date().toLocaleString()} ---------- [${msg.room}] ${msg.sender.name}: ${msg.content}`);
 
-
-  if (perm.includes(hash) && msg.content.startsWith("node")) {
-    try {
-      let result = eval(msg.content.slice(5).trim());
-      if (!result||result.length < 1)
-        result = '""';
-      msg.replyText(result);
-    } catch (e) {
-      msg.replyText(e + "");
-    }
-  }
-  
   if (user) {
     let exist = latestMsgs.find(u=>u.id==user.id);
     if(exist) exist.msg = msg;
@@ -578,8 +563,11 @@ function onMessage(msg: Message) {
       else msg.replyText(Bundle.find(lang, "account.account_notLogin"));
     }
   });
-  if (user&&user.status.callback && user.status.name == "selecting") user.status.callback(msg, user);
-  else Commands.forEach((commands, lang)=> commands[1].get(msg.content.slice(1).split(/\s/)[0])?.call(null, msg, user, lang))
+
+  if (user&&user.status.callback && user.status.name == "selecting") 
+    user.status.callback(msg, user);
+  else 
+    Commands.forEach((commands, lang)=> commands[1].get(msg.content.slice(1).split(/\s/)[0])?.call(null, msg, user, lang));  
 }
 
 init();

@@ -1,0 +1,1 @@
+worker: npx ts-node-dev --transpile-only -r tsconfig-paths/register src/index.ts

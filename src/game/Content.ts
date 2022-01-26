@@ -2,12 +2,9 @@
 
 import { UserSecure } from "RTTRPG/modules";
 import { Utils } from "RTTRPG/util"
-import { Entity } from "RTTRPG/game";
 import { Bundle } from "RTTRPG/assets";
 
 type User = UserSecure.User;
-type UnitEntity = Entity.UnitEntity;
-const Strings = Utils.Strings;
 let itemCount: number = 0;
 let unitCount: number = 0;
 
@@ -26,10 +23,6 @@ namespace Contents {
 
   export abstract class Durable {
     public abstract durability: number | undefined;
-    public abstract getDurability(): number;
-    public abstract setDurability(durability: number): void;
-    public abstract removeDurability(amount: number): void;
-    public abstract isBroken(): boolean;
   }
 
   export abstract class Dropable {
@@ -45,7 +38,6 @@ namespace Contents {
     public readonly localName: (user: User)=>string;
     public readonly description: (user: User)=>string;
     public readonly details: (user: User)=>string;
-    public readonly founders: number[]=[];
 
     constructor(name: string, type: string = "other") {
       this.name = name;
@@ -133,11 +125,8 @@ namespace Contents {
     }
 
     public consume(user: User, amount: number = 1) {
-      return Strings.format("{0}를 {1}만큼 섭취하였다!\n", [
-        this.name,
-        amount,
-        this.buffes.map((b) => b.callback(user, amount, b)).join("\n  "),
-      ]);
+      return Bundle.format(user.lang, "consume", this.localName(user), amount, this.buffes.map((b) => b.callback(user, amount, b)).join("\n  "),
+      );
     }
   }
 
@@ -166,32 +155,17 @@ namespace Contents {
       this.durability = durability;
     }
 
-    public isBroken() {
-      return this.durability > 0;
-    }
-    public getDurability() {
-      return this.durability;
-    }
-    public setDurability(durability: number = this.durability) {
-      this.durability = durability;
-    }
-
-    public removeDurability(amount: number = 1) {
-      this.durability -= amount;
-    }
-
     public attack(attacker: User, target: Heathy) {
       let critical = Utils.Mathf.randbool(this.critical_chance);
 
-      this.removeDurability();
-      return Strings.format(Bundle.find(attacker.lang, "battle.hit"),
-        [
+      if(attacker.inventory.weapon.durability) attacker.inventory.weapon.durability--;
+      return Bundle.format(attacker.lang, "battle.hit",
           critical ? Bundle.find(attacker.lang, "battle.critical") : "",
-          this.name,
-          (this.damage * (critical ? this.critical_ratio : 1)).toFixed(2),
+          this.localName(attacker),
+          (this.damage + (critical ? this.critical_ratio * this.damage : 0)).toFixed(2),
           target.health.toFixed(2),
-          (target.health -= this.damage * (critical ? this.critical_ratio : 1)).toFixed(2),
-        ]
+          (target.health -= this.damage + (critical ? this.critical_ratio * this.damage : 0)).toFixed(2),
+        
       );
     }
   }
@@ -246,13 +220,11 @@ namespace Contents {
       return stack.id == item.id && (!amount || stack.amount == amount);
     }
 
-    public consume(user: User, amount: number = 1) {
-      let item = Contents.Items.find(this.id);
-      if (item != undefined) {
-        if (item instanceof Consumable) {
-          this.amount--;
-          return item.consume(user, amount);
-        } else throw "the item: " + item.name + " is not consumable!";
+    public static consume(stack: ItemStack, user: User, amount: number = 1) {
+      let item = Contents.Items.find(stack.id);
+      if (item) {
+        stack.amount--;
+        return (item as unknown as Consumable).consume?.call(item, user, amount);
       }
     }
 
@@ -275,8 +247,8 @@ namespace Contents {
           })
         ] 
       ));
-      this.items.push(new Weapon("aluminum_sword", -1, 50, 1.5, 1, 1.15, 0.25, 10).dropWalking(false));
-      this.items.push(new Weapon("wooden_sword", -1, 30, 1.25, 1.5, 1.1, 0.15, 25).dropWalking(false));
+      this.items.push(new Weapon("aluminum_sword", -1, 50, 1.5, 1, 1.15, 0.25, 10).dropWalking(false).dropBattle(false));
+      this.items.push(new Weapon("wooden_sword", -1, 30, 1.25, 1.5, 1.1, 0.15, 25).dropWalking(false).dropBattle(false));
       this.items.push(new Weapon("punch", -1, -1, 1, 1, 0.1, 1.1, -1).dropBattle(false).dropShop(false).dropWalking(false));
     }
     public static getItems() {

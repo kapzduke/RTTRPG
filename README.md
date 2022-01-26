@@ -23,14 +23,27 @@ var config = {
   "email": "kaling email",
   "password": "kaling password",
   "key": "kakao dev js key",
-  "host": "kaling web domain"
+  "host": "kaling web domain",
+  "discord": "put discord bot key if you want"
 }
 ~~~
-
-this json file will be used for sending kakao link.
+this json file will be used for sending kakao link and discord login.
 
 2. run `npm i` to install all modules.
 3. run `npm run devServer` to start server.
 
 ## Start as Discord Bot
-not yet.
+1. add secret.json file with
+~~~json
+{
+  "email": "kaling email",
+  "password": "kaling password",
+  "key": "kakao dev js key",
+  "host": "kaling web domain",
+  "discord": "put discord bot key if you want"
+}
+~~~
+this json file will be used for sending kakao link and discord login.
+
+2. run `npm i` to install all modules.
+3. run `npm run devServer` to start server.

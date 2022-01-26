@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@remote-kakao/core": "1.0.0-alpha.6",
+    "discord.js": "^13.6.0",
     "properties-reader": "^2.2.0",
     "typescript": "4.5.5"
   },
