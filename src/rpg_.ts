@@ -72,7 +72,7 @@ function consumeCmd(msg: Message, user: User, lang: string) {
   let name = msg.content.split(/\s/).slice(1).join(" ");
   if (!name) return msg.replyText(prefix+Bundle.find(lang, "command.consume_help"));
   let stack: ItemStack | undefined = user.inventory.items.find(i=>ItemStack.getItem(i).localName(user)==name);
-  if (!stack) return msg.replyText(Bundle.format(lang, "account.notFount", name));
+  if (!stack) return msg.replyText(Bundle.format(lang, "account.notFound", name));
   let result = ItemStack.consume(stack, user);
   if(result) msg.replyText(result);
   save();
@@ -190,7 +190,7 @@ const exchangeSelection: EventSelection[] = [
     let repeat = (m: Message, u: UserSecure.User, t: UnitEntity) => {
       m.replyText(makeSelection(u, t, target.items.items.map((entity) => {
         let item = ItemStack.getItem(entity);
-        let money = item.cost * 35;
+        let money = item.cost * 25;
 
         return new EventSelection(
           u=>`${item.localName(user)}: ${money+Bundle.format(u.lang, "unit.money")} (${entity.amount+Bundle.format(u.lang, "unit.item")} ${Bundle.format(u.lang, "unit.item_left")})`,
@@ -321,9 +321,6 @@ const eventData = [
           if (exist) exist.amount++;
           else goblin.items.items.push(new ItemStack(item.id,1,item.durability));
         }
-
-        let item = getOne(Contents.Items.getItems().filter((i) => !i.dropableOnShop()&&i.id!==5), "rare");
-        goblin.items.items.push(new ItemStack(item.id,1,item.durability));
         m.replyText(Bundle.find(u.lang, "event.goblin_exchange"));
         m.replyText(makeSelection(u, goblin, exchangeSelection));
       })

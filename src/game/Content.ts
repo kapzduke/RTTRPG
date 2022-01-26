@@ -244,8 +244,8 @@ namespace Contents {
           })
         ] 
       ));
-      this.items.push(new Weapon("aluminum_sword", -1, 50, 1.5, 1, 1.15, 0.25, 10).dropWalking(false).dropBattle(false));
-      this.items.push(new Weapon("wooden_sword", -1, 30, 1.25, 1.5, 1.1, 0.15, 25).dropWalking(false).dropBattle(false));
+      this.items.push(new Weapon("aluminum_sword", 0.05, 15, 1.5, 1, 1.15, 0.25, 10).dropWalking(false).dropBattle(false));
+      this.items.push(new Weapon("wooden_sword", 0.1, 10, 1.25, 1.5, 1.1, 0.15, 25).dropWalking(false).dropBattle(false));
       this.items.push(new Weapon("punch", -1, -1, 1, 1, 0.1, 1.1, -1).dropBattle(false).dropShop(false).dropWalking(false));
     }
     public static getItems() {
