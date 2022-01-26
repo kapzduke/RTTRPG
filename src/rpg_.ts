@@ -74,8 +74,8 @@ function consumeCmd(msg: Message, user: User, lang: string) {
   let stack: ItemStack | undefined = user.inventory.items.find(i=>ItemStack.getItem(i).localName(user)==name);
   if (!stack) return msg.replyText(Bundle.format(lang, "account.notFount", name));
   let result = ItemStack.consume(stack, user);
-  console.log(result);
   if(result) msg.replyText(result);
+  save();
 };
 
 function contentInfoCmd(msg: Message, user: User, lang: string) {
@@ -568,6 +568,8 @@ function onMessage(msg: Message) {
     user.status.callback(msg, user);
   else 
     Commands.forEach((commands, lang)=> commands[1].get(msg.content.slice(1).split(/\s/)[0])?.call(null, msg, user, lang));  
+
+  save();
 }
 
 init();

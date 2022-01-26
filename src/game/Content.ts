@@ -1,5 +1,3 @@
-//TODO: 각 콘텐츠 파일로 나눠 모듈화. 줄이 너무 길어진다 이러다 다 죽어~
-
 import { UserSecure } from "RTTRPG/modules";
 import { Utils } from "RTTRPG/util"
 import { Bundle } from "RTTRPG/assets";
@@ -93,7 +91,7 @@ namespace Contents {
   export class Buff {
     public readonly value: number;
     public readonly localName: (user: User)=>string;
-    public readonly callback: Function;
+    public readonly callback: (user: User, amount: number, buff: Buff) => string;
 
     constructor(
       value: number,
@@ -107,7 +105,7 @@ namespace Contents {
     }
 
     public buff(user: User, amount: number) {
-      this.callback(user, amount, this);
+      return this.callback(user, amount, this);
     }
   }
 
@@ -125,8 +123,7 @@ namespace Contents {
     }
 
     public consume(user: User, amount: number = 1) {
-      return Bundle.format(user.lang, "consume", this.localName(user), amount, this.buffes.map((b) => b.callback(user, amount, b)).join("\n  "),
-      );
+      return Bundle.format(user.lang, "consume", this.localName(user), amount, this.buffes.map((b) => b.buff(user, amount)).join("\n  "));
     }
   }
 
@@ -242,7 +239,7 @@ namespace Contents {
       this.items.push(new Potion("energy_bar", 0.25, 0.25,
         [
           new Buff(10, "energy", (user: User, amount: number, buff: Buff) => {
-            user.energy += amount * buff.value;
+            user.stats.energy += amount * buff.value;
             return `* ${buff.localName(user)} +${amount * buff.value}`;
           })
         ] 
