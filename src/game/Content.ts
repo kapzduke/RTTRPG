@@ -234,9 +234,9 @@ namespace Contents {
     private static readonly items: Item[] = [];
 
     public static init() {
-      this.items.push(new Weapon("stone", 0.25, 0.25, 1.15, 1.2, 0.2, 1.05, 1));
+      this.items.push(new Weapon("stone", 0.25, 1.5, 1.15, 1.2, 0.2, 1.05, 1));
       this.items.push(new Item("fragment", 0.5, 0.5));
-      this.items.push(new Potion("energy_bar", 0.25, 0.25,
+      this.items.push(new Potion("energy_bar", 0.25, 2,
         [
           new Buff(10, "energy", (user: User, amount: number, buff: Buff) => {
             user.stats.energy += amount * buff.value;

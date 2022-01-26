@@ -175,7 +175,7 @@ function battlewin(msg: Message, user: User, unit: Unit) {
 function giveItem(user: User, item: Item, amount: number=1): string | null {
   let exist = user.inventory.items.find((i) => ItemStack.equals(i, item));
   if (exist) exist.amount += amount;
-  else user.inventory.items.push(new ItemStack(item.id, amount));
+  else user.inventory.items.push(new ItemStack(item.id, amount, (item as unknown as Contents.Durable).durability));
   save();
 
   if(!user.foundItems.includes(item.id)) {
@@ -460,7 +460,7 @@ function getContentInfo(user: User, msg: Message) {
 function getInventory(user: User) {
   return Bundle.find(user.lang, "inventory")+"\n-----------\n"+user.inventory.items.map((i) => {
     let item = ItemStack.getItem(i);
-    return `• ${item.localName(user)} ${i.amount > 0 ? `(${i.amount+" "+Bundle.find(user.lang, "unit.item")})` : ""}\n   ${item.description(user)}${i.durability && item instanceof Contents.Durable ? `(${Bundle.find(user.lang, "durability")}: ${i.durability}/${item.durability})` : ""}`;
+    return `• ${item.localName(user)} ${i.amount > 0 ? `(${i.amount+" "+Bundle.find(user.lang, "unit.item")})` : ""}\n   ${item.description(user)}${(item as unknown as Contents.Durable).durability ? `(${Bundle.find(user.lang, "durability")}: ${i.durability}/${(item as unknown as Contents.Durable).durability})` : ""}`;
   }).join("\n\n");
 }
 
